@@ -10,7 +10,7 @@
 
 | 脚本名称 | 当前版本 | Greasy Fork 主页 | 原始代码 (Raw Sync URL) | 说明 |
 | :--- | :---: | :--- | :--- | :--- |
-| **Photopea 完整工作区** | `3.2.1` | [Greasy Fork #599353](https://greasyfork.org/zh-CN/scripts/599353) | [photopea-workspace.user.js](https://raw.githubusercontent.com/Sostay/userscripts/main/scripts/photopea-workspace/photopea-workspace.user.js) | 收回 Photopea 广告预留宽度，完美兼容 Firefox/Zen/Edge/Chrome，修复侧边栏空白与横向飘移 |
+| **Photopea 完整工作区** | `3.2.2` | [Greasy Fork #599353](https://greasyfork.org/zh-CN/scripts/599353) | [photopea-workspace.user.js](https://raw.githubusercontent.com/Sostay/userscripts/main/scripts/photopea-workspace/photopea-workspace.user.js) | 收回 Photopea 广告预留宽度，完美兼容 Firefox/Zen/Edge/Chrome，彻底解决右侧工具栏空白与视口横向漂移 |
 | **Firefox 播放器** | `1.21` | [Greasy Fork #554122](https://greasyfork.org/zh-CN/scripts/554122) | [firefox-player.user.js](https://raw.githubusercontent.com/Sostay/userscripts/main/scripts/firefox-player/firefox-player.user.js) | 采用非侵入式UI注入，精准保留原始布局 |
 | **飞书网页链接自动跳转** | `1.0` | [Greasy Fork #558411](https://greasyfork.org/zh-CN/scripts/558411) | [feishu-link-redirect.user.js](https://raw.githubusercontent.com/Sostay/userscripts/main/scripts/feishu-link-redirect/feishu-link-redirect.user.js) | 将飞书 applink 链接自动跳转到 oa.feishu.cn 网页版 |
 
