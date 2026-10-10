@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         Photopea 完整工作区
 // @namespace    https://www.photopea.com/
-// @version      3.2.2
+// @version      3.2.3
 // @description  收回 Photopea 广告预留宽度，完美兼容 Firefox/Zen/Edge/Chrome，彻底解决右侧工具栏空白、高内存、卡顿与视口横向漂移溢出问题。
 // @author       Xion.Ai
 // @match        https://www.photopea.com/*
 // @match        https://photopea.com/*
 // @run-at       document-start
 // @grant        none
+// @inject-into  page
 // @noframes
 // @downloadURL https://update.greasyfork.org/scripts/599353/Photopea%20%E5%AE%8C%E6%95%B4%E5%B7%A5%E4%BD%9C%E5%8C%BA.user.js
 // @updateURL https://update.greasyfork.org/scripts/599353/Photopea%20%E5%AE%8C%E6%95%B4%E5%B7%A5%E4%BD%9C%E5%8C%BA.meta.js
@@ -16,6 +17,7 @@
 (() => {
   'use strict';
 
+  // 在 Firefox/Zen 及 Chromium 下同时劫持 page window 与沙盒 window
   const win = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
   const EXTRA_WIDTH = 320;
   const marker = Symbol('photopea-full-width');
@@ -112,7 +114,10 @@
   win.addEventListener('scroll', resetScroll, { capture: true, passive: true });
   win.addEventListener('resize', resetScroll, { passive: true });
 
-  // 5. 样式层保障：彻底隐藏被挤出视口的广告容器，阻止页面横向撑开
+  // 5. 样式层保障：
+  // a) 强制右侧工具栏面板在 Firefox/Gecko 下绝不被弹性盒压缩折叠消失 (.rightbar flex-shrink: 0)
+  // b) 彻底隐藏位于末尾被挤出视口的广告容器 (.flexrow.app > div:last-child:not(:first-child))
+  // c) 消除页面横向滚动
   function injectStyle() {
     const style = document.createElement('style');
     style.textContent = `
@@ -122,6 +127,10 @@
         max-width: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
+      }
+      /* 右侧工具栏面板在 Firefox 下绝不被弹性盒压缩折叠 */
+      .rightbar {
+        flex-shrink: 0 !important;
       }
       /* 隐藏 .flexrow.app 尾部的广告容器（消除多余的 320px 宽度） */
       .flexrow.app > div:last-child:not(:first-child) {
