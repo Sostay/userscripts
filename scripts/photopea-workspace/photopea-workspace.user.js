@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Photopea 完整工作区
 // @namespace    https://www.photopea.com/
-// @version      3.2.4
-// @description  收回 Photopea 广告预留宽度，完美兼容 Firefox/Zen/Edge/Chrome，彻底解决右侧工具栏空白、高内存、卡顿与视口横向漂移溢出问题。
+// @version      3.2.5
+// @description  收回 Photopea 广告预留宽度，完美兼容 Firefox/Zen/Edge/Chrome，彻底解决右侧工具栏空白、高内存、卡顿、折叠宽度异常与视口横向漂移问题。
 // @author       Xion.Ai
 // @match        https://www.photopea.com/*
 // @match        https://photopea.com/*
@@ -17,11 +17,11 @@
   'use strict';
 
   // 1. 样式层保障（在任何浏览器中优先注入）
-  // 核心解决 Firefox/Gecko 弹性盒将右侧面板压缩为 0 像素的顽疾：
-  // a) 强制 .rightbar 最小宽度与 flex-shrink: 0，永不被画布压缩消失
-  // b) 允许中间画布容器 min-width: 0 弹性收缩
+  // 精准适配 Photopea 右侧工具栏的展开/折叠状态：
+  // a) 展开面板列 (.vcolumn:has(.block)) 保持 min-width: 260px，防止在 Gecko/Firefox 下被压扁为 0
+  // b) 折叠图标列 (.vcolumn:has(.collapsed)) 锁定为 3em 纯图标宽度，杜绝右侧多余空白
   // c) 彻底隐藏末尾的 320px 广告占位容器
-  // d) 全局锁定横向滚动 (overflow-x: clip)
+  // d) 全局锁定横向溢出 (overflow-x: clip)
   function injectStyles() {
     const css = `
       html, body {
@@ -46,21 +46,28 @@
         width: 100% !important;
         max-width: 100% !important;
       }
-      /* 核心：右侧工具栏面板在 Firefox/Zen 下绝不被弹性盒压缩折叠为 0 */
+      /* 右侧工具栏面板容器：按内容自适应宽度，绝不额外强加固定死宽 */
       .rightbar {
         flex-shrink: 0 !important;
-        min-width: 268px !important;
+        min-width: 0 !important;
+        width: auto !important;
         visibility: visible !important;
         opacity: 1 !important;
       }
-      .rightbar .vcolumn:not(.collapsed) {
-        min-width: 268px !important;
+      /* 核心：仅在面板处于展开状态时 (.block) 设置最小宽度，保证图层面板完整显示 */
+      .rightbar .vcolumn:has(.block) {
+        flex-shrink: 0 !important;
+        min-width: 260px !important;
+        width: auto !important;
       }
-      .rightbar .vcolumn.collapsed {
-        min-width: 3em !important;
+      /* 核心修复：折叠状态 (.collapsed) 下精确锁定为 3em 图标宽度，消除右侧多出来的空白区域 */
+      .rightbar .vcolumn:has(.collapsed):not(:has(.block)) {
         width: 3em !important;
+        min-width: 0 !important;
+        max-width: 3em !important;
+        flex: 0 0 3em !important;
       }
-      /* 允许中间画布区域弹性自适应收缩，把宽度留给右侧面板 */
+      /* 允许中间画布区域弹性自适应收缩与延展 */
       .flexrow.app .flexrow > div:not(.rightbar) {
         min-width: 0 !important;
       }
@@ -153,17 +160,16 @@
       installWidth();
     }, 3000);
 
-    console.log('[Photopea 完整工作区 v3.2.4] 注入成功，当前视口修正宽度:', win.innerWidth);
+    console.log('[Photopea 完整工作区 v3.2.5] 注入成功，当前视口修正宽度:', win.innerWidth);
   }
 
-  // 3. 在真实页面上下文中直接注入 <script>，无视 Firefox Xray 包装与扩展沙盒
+  // 3. 在真实页面上下文中直接注入 <script>，穿透沙盒与包装层
   try {
     const s = document.createElement('script');
     s.textContent = `(${setupPageContext.toString()})();`;
     (document.head || document.documentElement).appendChild(s);
     s.remove();
   } catch (_) {
-    // 降级为直接执行
     setupPageContext();
   }
 
