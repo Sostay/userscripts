@@ -3,12 +3,14 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.40
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速调速/逐帧微调/快进快退/音量/画中画/截图/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速调速/逐帧微调/快进快退/音量/画中画/截图/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和尺寸。
-// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (speed control, frame stepping, seek, volume, PiP, screenshot, fullscreen, flip), clean borderless controls, and zero-layout-shift non-intrusive design.
+// @version      1.41
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (speed toggle, frame stepping, seek, volume, PiP, screenshot, fullscreen, flip), clean borderless controls, and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
+// @match        file:///*
+// @match        file://*/*
 // @grant        none
 // @run-at       document-start
 // @downloadURL https://update.greasyfork.org/scripts/554122/%E8%B4%A8%E6%84%9F%20HTML5%20%E6%92%AD%E6%94%BE%E5%99%A8.user.js
@@ -29,20 +31,29 @@
     (document.head || document.documentElement).appendChild(hideNativeControlsStyle);
 
     // 2. 本地文件直接播放或独立媒体直链页面时的居中排版优化
-    if (window.location.protocol === 'file:' || /\.(mp4|webm|mkv|mov|mp3|ogg|wav|m4a)($|\?)/i.test(window.location.pathname)) {
+    const isStandalonePage = window.location.protocol === 'file:' || /\.(mp4|webm|mkv|mov|mp3|ogg|wav|m4a)($|\?)/i.test(window.location.pathname);
+    if (isStandalonePage) {
         document.addEventListener('DOMContentLoaded', () => {
-            if (document.body && document.body.childElementCount === 1 && document.body.firstElementChild && (document.body.firstElementChild.tagName === 'VIDEO' || document.body.firstElementChild.tagName === 'AUDIO')) {
+            if (document.body && document.body.childElementCount <= 2) {
                 const styleId = '__mp_center_style';
                 if (document.getElementById(styleId)) return;
                 const centerCss = `
                     html, body {
                         height: 100%;
                         margin: 0;
+                        padding: 0;
+                        background-color: #0d0d0d !important;
                     }
                     body {
-                        display: grid;
-                        place-items: center;
-                        background-color: #0d0d0d;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        justify-content: center !important;
+                        align-items: center !important;
+                        overflow: hidden !important;
+                    }
+                    body > video {
+                        max-width: 100vw !important;
+                        max-height: 100vh !important;
                     }
                 `;
                 const styleNode = document.createElement('style');
@@ -136,7 +147,7 @@
     color: #a5baff;
 }
 
-/* OSD 金黄色高亮状态（快速快进/快退、加速状态） */
+/* OSD 金黄色高亮状态（快速快进/快退、倍速非1.0状态） */
 .__mp_osd_badge.__fast {
     color: #ffd04b !important;
 }
@@ -150,8 +161,8 @@
     margin-left: 2px;
 }
 
-/* 控制栏通用基础属性 */
-.__mp_ui {
+/* 视频控制栏基础属性（fixed 悬浮模式） */
+.__mp_ui.__mp_video_ui {
     position: fixed;
     height: 40px;
     box-sizing: border-box;
@@ -166,15 +177,6 @@
     z-index: 2147483647;
     user-select: none;
     -webkit-user-select: none;
-}
-
-.__mp_ui.__show {
-    opacity: 1 !important;
-    transform: translateY(0);
-}
-
-/* 视频播放器控制栏：无背景框、通透悬浮，贴近视频底部，沉浸感更强 */
-.__mp_ui.__mp_video_ui {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
@@ -183,9 +185,14 @@
     padding: 0 4px !important;
 }
 
-/* 视频控制栏的按钮：自带毛玻璃微底色与投影，保证在任何复杂视频画面上清晰可见 */
+.__mp_ui.__mp_video_ui.__show {
+    opacity: 1 !important;
+    transform: translateY(0);
+}
+
+/* 视频控制栏按钮：毛玻璃小圆底与投影，复杂画面下清晰可读 */
 .__mp_ui.__mp_video_ui .__mp_btn {
-    background: rgba(0, 0, 0, 0.36) !important;
+    background: rgba(0, 0, 0, 0.38) !important;
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
     border: 1px solid rgba(255, 255, 255, 0.16) !important;
@@ -193,30 +200,51 @@
 }
 
 .__mp_ui.__mp_video_ui .__mp_btn:hover {
-    background: rgba(0, 0, 0, 0.55) !important;
+    background: rgba(0, 0, 0, 0.58) !important;
     border-color: rgba(255, 255, 255, 0.35) !important;
 }
 
-/* 视频控制栏的时间文字：高对比度投影保护 */
 .__mp_ui.__mp_video_ui .__mp_time {
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 2px 6px rgba(0, 0, 0, 0.7);
 }
 
-/* 视频控制栏的进度条轨道：微投影保护浅色背景 */
 .__mp_ui.__mp_video_ui .__mp_progress {
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
 }
 
-/* 音频播放器控制栏：保留精致圆角毛玻璃框，通透度进一步提升 */
+/* 音频播放器控制栏：原位替换文档流胶囊设计（核心解决表格错位堆叠问题） */
 .__mp_ui.__mp_audio_ui {
-    height: 44px;
-    padding: 0 12px;
-    border-radius: 12px;
-    background: rgba(20, 20, 24, 0.42) !important;
+    position: relative !important;
+    display: inline-flex !important;
+    visibility: visible !important;
+    vertical-align: middle !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 0 12px !important;
+    height: 40px !important;
+    width: 100% !important;
+    max-width: 340px !important;
+    min-width: 160px !important;
+    border-radius: 20px !important;
+    background: rgba(28, 28, 34, 0.45) !important;
     backdrop-filter: blur(16px) !important;
     -webkit-backdrop-filter: blur(16px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.09) !important;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+    opacity: 1 !important;
+    transform: none !important;
+    pointer-events: auto !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    margin: 4px 0 !important;
+}
+
+/* 独立播放音频页面居中长胶囊 */
+body > .__mp_ui.__mp_audio_ui {
+    max-width: min(840px, 90vw) !important;
+    width: min(840px, 90vw) !important;
+    margin: 0 auto !important;
 }
 
 /* 圆形高质感毛玻璃按钮 */
@@ -348,7 +376,7 @@
     // 当前鼠标聚焦/最后操作的媒体元素（供全局快捷键调度）
     let activeMedia = null;
 
-    // 绑定控制器到媒体元素（完全非侵入式，绝对不改动媒体在原始页面的 DOM 节点层次和尺寸）
+    // 绑定控制器到媒体元素（视频采用 fixed 浮层，音频采用 DOM 原位替换，彻底杜绝表格错位）
     function attachUIToMedia(media) {
         if (!media || media.dataset.__mp_attached) return;
         media.dataset.__mp_attached = '1';
@@ -368,14 +396,14 @@
                 <span class="__mp_osd_badge ${isFast ? '__fast' : ''}">${badgeText}</span>
                 ${timeText ? `<span class="__mp_osd_time">${timeText}</span>` : ''}
             `;
-            updatePositions();
+            updateOSDPosition();
             osd.classList.add('__show');
             osdTimeout = setTimeout(() => {
                 osd.classList.remove('__show');
             }, 1200);
         }
 
-        // 2. 创建底部控制栏 UI 元素（fixed 悬浮在画面底部，区分视频无边框模式与音频毛玻璃模式）
+        // 2. 创建控制栏 UI 元素
         const ui = document.createElement('div');
         ui.className = `__mp_ui ${isAudio ? '__mp_audio_ui' : '__mp_video_ui'}`;
         ui.innerHTML = `
@@ -389,15 +417,36 @@
                 ${!isAudio ? `<div class="__mp_btn __mp_fullscreen" title="全屏 (Enter / 双击)"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></div>` : ''}
             </div>
         `;
-        document.body.appendChild(ui);
 
-        // 3. 坐标精确定位更新（视频紧密贴合边缘，音频保留适度边距）
+        // 核心挂载策略：
+        // 视频：挂载在 body，使用 fixed 贴合在视频画面底部
+        // 音频：直接作为兄弟节点插入在 audio 原位置，原 audio 隐藏，完美占据表格/段落中的原位槽位！
+        if (isAudio) {
+            media.style.display = 'none';
+            media.after(ui);
+        } else {
+            document.body.appendChild(ui);
+        }
+
+        // 3. 坐标定位更新
+        const updateOSDPosition = () => {
+            const anchor = isAudio ? ui : media;
+            if (!anchor.isConnected) return;
+            const rect = anchor.getBoundingClientRect();
+            osd.style.left = `${Math.round(clamp(rect.left + 14, 10, window.innerWidth - 180))}px`;
+            osd.style.top = `${Math.round(clamp(rect.top + (isAudio ? -42 : 14), 10, window.innerHeight - 50))}px`;
+        };
+
         const updatePositions = () => {
             if (!media.isConnected) return;
+            updateOSDPosition();
+
+            // 音频已经在文档流中自适应，不需要也绝不应计算 fixed 坐标
+            if (isAudio) return;
+
             const isFull = media.classList.contains('__mp_fullscreen_media');
             const rect = isFull ? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight, bottom: window.innerHeight } : media.getBoundingClientRect();
 
-            // 若元素移出视口、或尺寸过小不可见，自动隐藏浮层，防止空白处漂浮
             if (!isFull && (rect.width <= 10 || rect.height <= 10 || rect.bottom < 0 || rect.top > window.innerHeight)) {
                 ui.style.display = 'none';
                 osd.style.display = 'none';
@@ -407,29 +456,14 @@
                 osd.style.display = 'flex';
             }
 
-            // OSD：锚定于画面左上角 14px 处
-            osd.style.left = `${Math.round(rect.left + 14)}px`;
-            osd.style.top = `${Math.round(rect.top + 14)}px`;
-
-            // UI 控制栏定位：
-            // 视频模式：去掉背景框后与边缘紧密贴合（左右仅距 8px，底部仅距 4px）
-            // 音频模式：保留毛玻璃背景框（左右各距 8px，底部居中）
-            if (!isAudio) {
-                const uiWidth = Math.max(180, rect.width - 16);
-                ui.style.left = `${Math.round(rect.left + 8)}px`;
-                ui.style.top = `${Math.round(rect.top + rect.height - 40 - 4)}px`;
-                ui.style.width = `${Math.round(uiWidth)}px`;
-            } else {
-                const uiWidth = Math.max(220, rect.width - 16);
-                ui.style.left = `${Math.round(rect.left + 8)}px`;
-                ui.style.top = `${Math.round(rect.top + rect.height - 44 - 6)}px`;
-                ui.style.width = `${Math.round(uiWidth)}px`;
-            }
+            const uiWidth = Math.max(180, rect.width - 16);
+            ui.style.left = `${Math.round(rect.left + 8)}px`;
+            ui.style.top = `${Math.round(rect.top + rect.height - 40 - 4)}px`;
+            ui.style.width = `${Math.round(uiWidth)}px`;
         };
 
         updatePositions();
 
-        // 监听局部容器滚动（capture 阶段捕获全页面任意容器滚动）、窗口变化及媒体尺寸重排
         const resizeObserver = new ResizeObserver(updatePositions);
         resizeObserver.observe(media);
         if (media.parentElement) resizeObserver.observe(media.parentElement);
@@ -437,16 +471,17 @@
         window.addEventListener('scroll', updatePositions, { passive: true, capture: true });
         window.addEventListener('resize', updatePositions, { passive: true });
 
-        // 隐藏原生控件：Firefox 下设为 false，Chromium 下由 CSS 拦截
         media.controls = false;
 
         // 4. 控制栏显隐交互
         let hideTimeout = null;
         const showUI = () => {
+            if (isAudio) return; // 音频始终可见
             clearTimeout(hideTimeout);
             ui.classList.add('__show');
         };
         const hideUI = () => {
+            if (isAudio) return;
             clearTimeout(hideTimeout);
             if (!media.paused && !media.ended) {
                 hideTimeout = setTimeout(() => ui.classList.remove('__show'), 2000);
@@ -489,7 +524,7 @@
             togglePlay();
         });
 
-        // 画面单击暂停与双击全屏（防抖解耦，杜绝双击时画面闪烁暂停）
+        // 画面单击暂停与双击全屏（防抖解耦）
         let clickTimer = null;
         media.addEventListener('click', (e) => {
             if (ui.contains(e.target)) return;
@@ -505,7 +540,7 @@
             }
         });
 
-        // 6. 全屏切换（采用无损真全屏方案：不改变 DOM 树，零风险断流）
+        // 6. 全屏切换
         const toggleFullscreen = () => {
             if (isAudio) return;
             const isFull = media.classList.contains('__mp_fullscreen_media');
@@ -540,7 +575,7 @@
             }
         });
 
-        // 7. 音量控制与 OSD 反馈（严格还原参考图 1）
+        // 7. 音量控制与 OSD 反馈
         const muteBtn = ui.querySelector('.__mp_mute');
         const updateVolumeUI = () => {
             const vol = media.volume;
@@ -585,7 +620,7 @@
         media.addEventListener('wheel', onWheelAdjustVolume, { passive: false });
         ui.addEventListener('wheel', onWheelAdjustVolume, { passive: false });
 
-        // 8. 快进/快退核心函数（精准还原参考图 2、3）
+        // 8. 快进/快退核心函数
         const seek = (seconds, isFast = false) => {
             if (isNaN(media.duration)) return;
             media.currentTime = clamp(media.currentTime + seconds, 0, media.duration);
@@ -595,7 +630,6 @@
             const badgeText = `${isForward ? '+' : '-'}${absSec}s${isFast ? ' (快速)' : ''}`;
             const timeText = `${formatTime(media.currentTime)} / ${formatTime(media.duration)}`;
 
-            // 蓝色圆角方块图标，内含白色快进/快退双箭头
             const iconSvg = isForward
                 ? `<svg viewBox="0 0 24 24"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>`
                 : `<svg viewBox="0 0 24 24"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>`;
@@ -609,11 +643,16 @@
             showOSD(iconHtml, badgeText, timeText, isFast);
         };
 
-        // 9. 倍速无级调节 (X 减速 / C 加速 / Z 重置)
+        // 9. 倍速无级调节与记忆循环切换 (X 减速 / C 加速 / Z 双向切换)
+        let lastCustomRate = 2.0;
+
         const setRate = (delta) => {
             let rate = Math.round((media.playbackRate + delta) * 10) / 10;
             rate = clamp(rate, 0.1, 16.0);
             media.playbackRate = rate;
+            if (rate !== 1.0) {
+                lastCustomRate = rate;
+            }
             const isFast = rate > 1.0;
             const speedIconSvg = `<svg viewBox="0 0 24 24"><path d="M20.38 8.57l-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.43zM10.59 15.41a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z"/></svg>`;
             showOSD(
@@ -624,13 +663,27 @@
             );
         };
 
-        const resetRate = () => {
-            media.playbackRate = 1.0;
+        const toggleRate = () => {
             const speedIconSvg = `<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg></span>`;
-            showOSD(
-                `<span class="__mp_osd_vol_icon">${speedIconSvg}</span>`,
-                `恢复正常速度 1.0x`
-            );
+            if (media.playbackRate !== 1.0) {
+                // 当前处于非 1.0 倍速，记忆它并切回 1.0
+                lastCustomRate = media.playbackRate;
+                media.playbackRate = 1.0;
+                showOSD(
+                    `<span class="__mp_osd_vol_icon">${speedIconSvg}</span>`,
+                    `恢复正常速度 1.0x`
+                );
+            } else {
+                // 当前处于 1.0 正常速度，循环切回上次的记忆倍速（默认 2.0x）
+                const targetRate = clamp(lastCustomRate || 2.0, 0.1, 16.0);
+                media.playbackRate = targetRate;
+                showOSD(
+                    `<span class="__mp_osd_vol_icon">${speedIconSvg}</span>`,
+                    `切换倍速 ${targetRate.toFixed(1)}x`,
+                    '',
+                    targetRate > 1.0
+                );
+            }
         };
 
         // 10. 逐帧微调 (D 上一帧 / F 下一帧)
@@ -783,6 +836,7 @@
             window.removeEventListener('resize', updatePositions);
             if (ui.parentElement) ui.remove();
             if (osd.parentElement) osd.remove();
+            if (isAudio) media.style.display = '';
             media.classList.remove('__mp_fullscreen_media');
             delete media.dataset.__mp_attached;
             delete media.dataset.__mp_had_controls;
@@ -811,7 +865,7 @@
             togglePlay,
             toggleFullscreen,
             setRate,
-            resetRate,
+            toggleRate,
             prevFrame,
             nextFrame,
             captureFrame,
@@ -825,11 +879,11 @@
     const attachedMedia = new WeakMap();
 
     function processMedia(media) {
-        // 核心过滤：只接管原生带 controls 的播放器或独立直链播放页面，避免破坏 B站/YouTube 等自带高级播放器的网站
+        // 核心过滤：接管原生 controls、独立媒体直链、或者本地 file: 播放的音频/视频
         const hasControls = media.hasAttribute('controls') || media.dataset.__mp_had_controls === '1';
-        const isStandaloneMedia = window.location.protocol === 'file:' || /\.(mp4|webm|mkv|mov|mp3|ogg|wav|m4a)($|\?)/i.test(window.location.pathname);
+        const isStandalone = isStandalonePage || (document.body && document.body.childElementCount <= 2 && (media.parentElement === document.body || media.parentElement?.parentElement === document.body));
 
-        if (hasControls || isStandaloneMedia) {
+        if (hasControls || isStandalone) {
             media.dataset.__mp_had_controls = '1';
             if (!attachedMedia.has(media)) {
                 try {
@@ -933,7 +987,8 @@
                 break;
             case 'KeyZ':
                 e.preventDefault();
-                controller.resetRate();
+                // 循环切换自定义倍速与正常速度 1.0x
+                controller.toggleRate();
                 break;
             case 'KeyD':
                 e.preventDefault();
