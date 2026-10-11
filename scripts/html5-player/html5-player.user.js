@@ -3,7 +3,7 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.31
+// @version      1.32
 // @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持快捷键（快进快退/音量/全屏/暂停）、左上角高质感 OSD 提示，精准保留原始网页布局和尺寸。
 // @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持快捷键（快进快退/音量/全屏/暂停）、左上角高质感 OSD 提示，精准保留原始网页布局和尺寸。
 // @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, shortcuts, clean borderless controls, and zero-layout-shift non-intrusive design.
