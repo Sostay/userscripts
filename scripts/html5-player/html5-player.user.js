@@ -3,9 +3,9 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.41
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
+// @version      1.42
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/全屏/镜像翻转，严格过滤 Alt/Ctrl 浏览器原生快捷键）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/全屏/镜像翻转，严格过滤 Alt/Ctrl 浏览器原生快捷键）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
 // @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (speed toggle, frame stepping, seek, volume, PiP, screenshot, fullscreen, flip), clean borderless controls, and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
@@ -923,7 +923,7 @@ body > .__mp_ui.__mp_audio_ui {
         subtree: true,
     });
 
-    // 16. 全局全能快捷键调度系统（统一全主流浏览器体验）
+    // 16. 全局全能快捷键调度系统（统一全主流浏览器体验，严格规避系统与浏览器快捷键冲突）
     window.addEventListener('keydown', (e) => {
         // 输入框打字时防误触：绝不拦截任何键盘事件
         const activeElem = document.activeElement;
@@ -933,6 +933,11 @@ body > .__mp_ui.__mp_audio_ui {
             activeElem.tagName === 'SELECT' ||
             activeElem.isContentEditable
         )) {
+            return;
+        }
+
+        // 彻底放行所有 Alt 组合键（如 Alt+D 聚焦地址栏、Alt+← 历史后退、Alt+F 等）与 Meta/Command 键
+        if (e.altKey || e.metaKey) {
             return;
         }
 
@@ -946,6 +951,57 @@ body > .__mp_ui.__mp_audio_ui {
         if (!targetMedia || !attachedMedia.has(targetMedia)) return;
         const controller = attachedMedia.get(targetMedia);
 
+        // 如果按下了 Ctrl 键，仅处理特定绑定的快速跳转与音量，其余（如 Ctrl+C 复制、Ctrl+X 剪切、Ctrl+D 书签、Ctrl+F 搜索、Ctrl+S 保存等）全部严格放行给浏览器
+        if (e.ctrlKey) {
+            switch (e.code) {
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    controller.seek(-30, true);
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    controller.seek(30, true);
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    controller.changeVolume(0.20);
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    controller.changeVolume(-0.20);
+                    break;
+            }
+            return;
+        }
+
+        // 如果按下了 Shift 键，仅处理特定绑定的功能，其余全部放行
+        if (e.shiftKey) {
+            switch (e.code) {
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    controller.seek(-30, true);
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    controller.seek(30, true);
+                    break;
+                case 'KeyS':
+                    e.preventDefault();
+                    controller.captureFrame();
+                    break;
+                case 'KeyP':
+                    e.preventDefault();
+                    controller.togglePiP();
+                    break;
+                case 'KeyM':
+                    e.preventDefault();
+                    controller.toggleFlip();
+                    break;
+            }
+            return;
+        }
+
+        // 无任何修饰键（纯单键操作）
         switch (e.code) {
             case 'Space':
                 e.preventDefault();
@@ -953,29 +1009,19 @@ body > .__mp_ui.__mp_audio_ui {
                 break;
             case 'ArrowLeft':
                 e.preventDefault();
-                // 普通快退 5s，Shift/Ctrl 快速快退 30s
-                if (e.shiftKey || e.ctrlKey) {
-                    controller.seek(-30, true);
-                } else {
-                    controller.seek(-5, false);
-                }
+                controller.seek(-5, false);
                 break;
             case 'ArrowRight':
                 e.preventDefault();
-                // 普通快进 5s，Shift/Ctrl 快速快进 30s
-                if (e.shiftKey || e.ctrlKey) {
-                    controller.seek(30, true);
-                } else {
-                    controller.seek(5, false);
-                }
+                controller.seek(5, false);
                 break;
             case 'ArrowUp':
                 e.preventDefault();
-                controller.changeVolume(e.ctrlKey ? 0.20 : 0.05);
+                controller.changeVolume(0.05);
                 break;
             case 'ArrowDown':
                 e.preventDefault();
-                controller.changeVolume(e.ctrlKey ? -0.20 : -0.05);
+                controller.changeVolume(-0.05);
                 break;
             case 'KeyC':
                 e.preventDefault();
@@ -998,27 +1044,10 @@ body > .__mp_ui.__mp_audio_ui {
                 e.preventDefault();
                 controller.nextFrame();
                 break;
-            case 'KeyS':
-                if (e.shiftKey) {
-                    e.preventDefault();
-                    controller.captureFrame();
-                }
-                break;
-            case 'KeyP':
-                if (e.shiftKey) {
-                    e.preventDefault();
-                    controller.togglePiP();
-                }
-                break;
             case 'KeyM':
-                if (e.shiftKey) {
-                    e.preventDefault();
-                    controller.toggleFlip();
-                } else {
-                    e.preventDefault();
-                    controller.media.muted = !controller.media.muted;
-                    controller.changeVolume(0);
-                }
+                e.preventDefault();
+                controller.media.muted = !controller.media.muted;
+                controller.changeVolume(0);
                 break;
             case 'Enter':
                 e.preventDefault();
