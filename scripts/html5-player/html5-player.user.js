@@ -3,10 +3,10 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.32
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持快捷键（快进快退/音量/全屏/暂停）、左上角高质感 OSD 提示，精准保留原始网页布局和尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持快捷键（快进快退/音量/全屏/暂停）、左上角高质感 OSD 提示，精准保留原始网页布局和尺寸。
-// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, shortcuts, clean borderless controls, and zero-layout-shift non-intrusive design.
+// @version      1.40
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速调速/逐帧微调/快进快退/音量/画中画/截图/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速调速/逐帧微调/快进快退/音量/画中画/截图/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (speed control, frame stepping, seek, volume, PiP, screenshot, fullscreen, flip), clean borderless controls, and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
 // @grant        none
@@ -114,7 +114,7 @@
     fill: #ffffff;
 }
 
-/* OSD 音量专用小图标（参考图 1） */
+/* OSD 通用功能小图标 */
 .__mp_osd_vol_icon {
     display: inline-flex;
     align-items: center;
@@ -136,12 +136,12 @@
     color: #a5baff;
 }
 
-/* OSD 快速快进/快退状态文本（快速状态：金黄色高亮 #ffd04b，粗体） */
+/* OSD 金黄色高亮状态（快速快进/快退、加速状态） */
 .__mp_osd_badge.__fast {
     color: #ffd04b !important;
 }
 
-/* OSD 进度时间文本（白色，清晰等宽对齐） */
+/* OSD 进度时间/辅助参数文本（白色，清晰等宽对齐） */
 .__mp_osd_time {
     font-size: 15px;
     font-weight: 500;
@@ -385,8 +385,8 @@
             </div>
             <div class="__mp_time">00:00 / 00:00</div>
             <div class="__mp_right_controls">
-                <div class="__mp_btn __mp_mute" title="静音 / 滚轮调节音量"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg></div>
-                ${!isAudio ? `<div class="__mp_btn __mp_fullscreen" title="全屏 (F / 双击)"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></div>` : ''}
+                <div class="__mp_btn __mp_mute" title="静音 (M) / 滚轮调节音量"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg></div>
+                ${!isAudio ? `<div class="__mp_btn __mp_fullscreen" title="全屏 (Enter / 双击)"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></div>` : ''}
             </div>
         `;
         document.body.appendChild(ui);
@@ -609,7 +609,113 @@
             showOSD(iconHtml, badgeText, timeText, isFast);
         };
 
-        // 9. 进度条拖拽与时间更新
+        // 9. 倍速无级调节 (X 减速 / C 加速 / Z 重置)
+        const setRate = (delta) => {
+            let rate = Math.round((media.playbackRate + delta) * 10) / 10;
+            rate = clamp(rate, 0.1, 16.0);
+            media.playbackRate = rate;
+            const isFast = rate > 1.0;
+            const speedIconSvg = `<svg viewBox="0 0 24 24"><path d="M20.38 8.57l-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.43zM10.59 15.41a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z"/></svg>`;
+            showOSD(
+                `<span class="__mp_osd_vol_icon">${speedIconSvg}</span>`,
+                `播放速度 ${rate.toFixed(1)}x`,
+                '',
+                isFast
+            );
+        };
+
+        const resetRate = () => {
+            media.playbackRate = 1.0;
+            const speedIconSvg = `<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg></span>`;
+            showOSD(
+                `<span class="__mp_osd_vol_icon">${speedIconSvg}</span>`,
+                `恢复正常速度 1.0x`
+            );
+        };
+
+        // 10. 逐帧微调 (D 上一帧 / F 下一帧)
+        const frameStep = 1 / 30; // 约 0.0333s 单帧时间
+        const prevFrame = () => {
+            if (isNaN(media.duration)) return;
+            media.pause();
+            media.currentTime = clamp(media.currentTime - frameStep, 0, media.duration);
+            const iconSvg = `<svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>`;
+            showOSD(
+                `<span class="__mp_osd_vol_icon">${iconSvg}</span>`,
+                `上一帧`,
+                `${formatTime(media.currentTime)} / ${formatTime(media.duration)}`
+            );
+        };
+
+        const nextFrame = () => {
+            if (isNaN(media.duration)) return;
+            media.pause();
+            media.currentTime = clamp(media.currentTime + frameStep, 0, media.duration);
+            const iconSvg = `<svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>`;
+            showOSD(
+                `<span class="__mp_osd_vol_icon">${iconSvg}</span>`,
+                `下一帧`,
+                `${formatTime(media.currentTime)} / ${formatTime(media.duration)}`
+            );
+        };
+
+        // 11. 画面截图 (Shift + S)
+        const captureFrame = () => {
+            if (isAudio || !media.videoWidth || !media.videoHeight) return;
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = media.videoWidth;
+                canvas.height = media.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(media, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob((blob) => {
+                    if (!blob) return;
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `screenshot_${formatTime(media.currentTime).replace(':', '-')}.png`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    const camSvg = `<svg viewBox="0 0 24 24"><path d="M12 15.2a3.2 3.2 0 100-6.4 3.2 3.2 0 000 6.4zM9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>`;
+                    showOSD(
+                        `<span class="__mp_osd_vol_icon">${camSvg}</span>`,
+                        `已截图保存`,
+                        `${media.videoWidth}x${media.videoHeight}`
+                    );
+                }, 'image/png');
+            } catch (err) {
+                console.warn('[质感播放器] 截图受跨域资源保护限制:', err);
+            }
+        };
+
+        // 12. 画中画切换 (Shift + P)
+        const togglePiP = () => {
+            if (isAudio || !document.pictureInPictureEnabled) return;
+            const pipSvg = `<svg viewBox="0 0 24 24"><path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/></svg>`;
+            if (document.pictureInPictureElement === media) {
+                document.exitPictureInPicture().catch(() => {});
+                showOSD(`<span class="__mp_osd_vol_icon">${pipSvg}</span>`, `退出画中画`);
+            } else {
+                media.requestPictureInPicture().then(() => {
+                    showOSD(`<span class="__mp_osd_vol_icon">${pipSvg}</span>`, `开启画中画`);
+                }).catch(() => {});
+            }
+        };
+
+        // 13. 画面水平镜像翻转 (Shift + M)
+        let isFlipped = false;
+        const toggleFlip = () => {
+            if (isAudio) return;
+            isFlipped = !isFlipped;
+            media.style.transform = isFlipped ? 'scaleX(-1)' : '';
+            const flipSvg = `<svg viewBox="0 0 24 24"><path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zM3 5v14c0 1.1.9 2 2 2h4v-2H5V5h4V3H5c-1.1 0-2 .9-2 2zm16-2v2h2c0-1.1-.9-2-2-2zm-8 20h2V1h-2v22zm8-6h2v-2h-2v2zM15 5h2V3h-2v2zm4 8h2v-2h-2v2z"/></svg>`;
+            showOSD(
+                `<span class="__mp_osd_vol_icon">${flipSvg}</span>`,
+                isFlipped ? `画面镜像 (开启)` : `画面镜像 (关闭)`
+            );
+        };
+
+        // 14. 进度条拖拽与时间更新
         const progress = ui.querySelector('.__mp_progress');
         const progressContainer = ui.querySelector('.__mp_progress_container');
         const timeDisplay = ui.querySelector('.__mp_time');
@@ -669,7 +775,7 @@
         media.addEventListener('loadedmetadata', onMetadataLoaded);
         if (media.readyState >= 1) onMetadataLoaded();
 
-        // 10. 全局生命周期与资源清理
+        // 15. 全局生命周期与资源清理
         const cleanup = () => {
             if (rafId) cancelAnimationFrame(rafId);
             if (resizeObserver) resizeObserver.disconnect();
@@ -704,6 +810,13 @@
             changeVolume,
             togglePlay,
             toggleFullscreen,
+            setRate,
+            resetRate,
+            prevFrame,
+            nextFrame,
+            captureFrame,
+            togglePiP,
+            toggleFlip,
             cleanup
         };
         return mediaController;
@@ -756,7 +869,7 @@
         subtree: true,
     });
 
-    // 11. 全局快捷键调度系统（统一全主流浏览器体验）
+    // 16. 全局全能快捷键调度系统（统一全主流浏览器体验）
     window.addEventListener('keydown', (e) => {
         // 输入框打字时防误触：绝不拦截任何键盘事件
         const activeElem = document.activeElement;
@@ -804,18 +917,55 @@
                 break;
             case 'ArrowUp':
                 e.preventDefault();
-                controller.changeVolume(0.05);
+                controller.changeVolume(e.ctrlKey ? 0.20 : 0.05);
                 break;
             case 'ArrowDown':
                 e.preventDefault();
-                controller.changeVolume(-0.05);
+                controller.changeVolume(e.ctrlKey ? -0.20 : -0.05);
                 break;
-            case 'KeyM':
+            case 'KeyC':
                 e.preventDefault();
-                controller.media.muted = !controller.media.muted;
-                controller.changeVolume(0);
+                controller.setRate(0.1);
+                break;
+            case 'KeyX':
+                e.preventDefault();
+                controller.setRate(-0.1);
+                break;
+            case 'KeyZ':
+                e.preventDefault();
+                controller.resetRate();
+                break;
+            case 'KeyD':
+                e.preventDefault();
+                controller.prevFrame();
                 break;
             case 'KeyF':
+                e.preventDefault();
+                controller.nextFrame();
+                break;
+            case 'KeyS':
+                if (e.shiftKey) {
+                    e.preventDefault();
+                    controller.captureFrame();
+                }
+                break;
+            case 'KeyP':
+                if (e.shiftKey) {
+                    e.preventDefault();
+                    controller.togglePiP();
+                }
+                break;
+            case 'KeyM':
+                if (e.shiftKey) {
+                    e.preventDefault();
+                    controller.toggleFlip();
+                } else {
+                    e.preventDefault();
+                    controller.media.muted = !controller.media.muted;
+                    controller.changeVolume(0);
+                }
+                break;
+            case 'Enter':
                 e.preventDefault();
                 controller.toggleFullscreen();
                 break;
