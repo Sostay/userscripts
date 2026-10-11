@@ -1,8 +1,12 @@
 // ==UserScript==
 // @name         质感 HTML5 播放器
+// @name:zh-CN   质感 HTML5 播放器
+// @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.30
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，支持快捷键（快进快退/音量/全屏/暂停）、左上角高质感 OSD 提示，精准保留原始网页布局和尺寸。
+// @version      1.31
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持快捷键（快进快退/音量/全屏/暂停）、左上角高质感 OSD 提示，精准保留原始网页布局和尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持快捷键（快进快退/音量/全屏/暂停）、左上角高质感 OSD 提示，精准保留原始网页布局和尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, shortcuts, clean borderless controls, and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
 // @grant        none
@@ -146,26 +150,19 @@
     margin-left: 2px;
 }
 
-/* 控制栏基础外观（采用非侵入式 fixed 定位，贴合媒体底部，绝不改变原页面布局） */
+/* 控制栏通用基础属性 */
 .__mp_ui {
     position: fixed;
-    height: 44px;
+    height: 40px;
     box-sizing: border-box;
     display: flex !important;
     visibility: visible !important;
     align-items: center;
-    gap: 10px;
-    padding: 0 12px;
-    border-radius: 12px;
-    background: rgba(24, 24, 27, 0.72);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    gap: 8px;
     pointer-events: auto;
     opacity: 0;
     transition: opacity 180ms ease, transform 180ms ease;
-    transform: translateY(8px);
+    transform: translateY(6px);
     z-index: 2147483647;
     user-select: none;
     -webkit-user-select: none;
@@ -174,6 +171,52 @@
 .__mp_ui.__show {
     opacity: 1 !important;
     transform: translateY(0);
+}
+
+/* 视频播放器控制栏：无背景框、通透悬浮，贴近视频底部，沉浸感更强 */
+.__mp_ui.__mp_video_ui {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 4px !important;
+}
+
+/* 视频控制栏的按钮：自带毛玻璃微底色与投影，保证在任何复杂视频画面上清晰可见 */
+.__mp_ui.__mp_video_ui .__mp_btn {
+    background: rgba(0, 0, 0, 0.36) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45) !important;
+}
+
+.__mp_ui.__mp_video_ui .__mp_btn:hover {
+    background: rgba(0, 0, 0, 0.55) !important;
+    border-color: rgba(255, 255, 255, 0.35) !important;
+}
+
+/* 视频控制栏的时间文字：高对比度投影保护 */
+.__mp_ui.__mp_video_ui .__mp_time {
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+
+/* 视频控制栏的进度条轨道：微投影保护浅色背景 */
+.__mp_ui.__mp_video_ui .__mp_progress {
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+}
+
+/* 音频播放器控制栏：保留精致圆角毛玻璃框，通透度进一步提升 */
+.__mp_ui.__mp_audio_ui {
+    height: 44px;
+    padding: 0 12px;
+    border-radius: 12px;
+    background: rgba(20, 20, 24, 0.42) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.09) !important;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28) !important;
 }
 
 /* 圆形高质感毛玻璃按钮 */
@@ -190,12 +233,12 @@
     cursor: pointer;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
     flex-shrink: 0;
-    transition: transform 120ms ease, background 120ms ease;
+    transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
 }
 
 .__mp_btn:hover {
     transform: scale(1.08);
-    background: rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.18);
 }
 
 .__mp_btn svg {
@@ -221,7 +264,7 @@
     appearance: none;
     height: 4px;
     border-radius: 999px;
-    background: linear-gradient(to right, #3b82f6 var(--play-percent, 0%), rgba(255,255,255,0.4) var(--play-percent, 0%), rgba(255,255,255,0.4) var(--buffer-percent, 0%), rgba(255,255,255,0.18) var(--buffer-percent, 0%));
+    background: linear-gradient(to right, #3b82f6 var(--play-percent, 0%), rgba(255,255,255,0.4) var(--play-percent, 0%), rgba(255,255,255,0.4) var(--buffer-percent, 0%), rgba(255,255,255,0.2) var(--buffer-percent, 0%));
     outline: none;
     width: 100%;
     margin: 0;
@@ -241,7 +284,7 @@
     background: #ffffff;
     border: none;
     cursor: pointer;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
     transition: transform 120ms ease;
 }
 
@@ -256,7 +299,7 @@
     background: #ffffff;
     border: none;
     cursor: pointer;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
     transition: transform 120ms ease;
 }
 
@@ -332,9 +375,9 @@
             }, 1200);
         }
 
-        // 2. 创建底部控制栏 UI 元素（fixed 悬浮在画面底部）
+        // 2. 创建底部控制栏 UI 元素（fixed 悬浮在画面底部，区分视频无边框模式与音频毛玻璃模式）
         const ui = document.createElement('div');
-        ui.className = '__mp_ui';
+        ui.className = `__mp_ui ${isAudio ? '__mp_audio_ui' : '__mp_video_ui'}`;
         ui.innerHTML = `
             <div class="__mp_btn __mp_play" title="播放 / 暂停 (Space)"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5z"/></svg></div>
             <div class="__mp_progress_container">
@@ -348,7 +391,7 @@
         `;
         document.body.appendChild(ui);
 
-        // 3. 坐标精确定位更新（fixed 定位：零侵入，支持局部滚动容器及弹窗）
+        // 3. 坐标精确定位更新（视频紧密贴合边缘，音频保留适度边距）
         const updatePositions = () => {
             if (!media.isConnected) return;
             const isFull = media.classList.contains('__mp_fullscreen_media');
@@ -364,15 +407,24 @@
                 osd.style.display = 'flex';
             }
 
-            // OSD：锚定于画面左上角 16px 处
-            osd.style.left = `${Math.round(rect.left + 16)}px`;
-            osd.style.top = `${Math.round(rect.top + 16)}px`;
+            // OSD：锚定于画面左上角 14px 处
+            osd.style.left = `${Math.round(rect.left + 14)}px`;
+            osd.style.top = `${Math.round(rect.top + 14)}px`;
 
-            // UI 控制栏：锚定于画面底部 12px 处
-            const uiWidth = Math.max(200, rect.width - 24);
-            ui.style.left = `${Math.round(rect.left + 12)}px`;
-            ui.style.top = `${Math.round(rect.top + rect.height - 44 - 12)}px`;
-            ui.style.width = `${Math.round(uiWidth)}px`;
+            // UI 控制栏定位：
+            // 视频模式：去掉背景框后与边缘紧密贴合（左右仅距 8px，底部仅距 4px）
+            // 音频模式：保留毛玻璃背景框（左右各距 8px，底部居中）
+            if (!isAudio) {
+                const uiWidth = Math.max(180, rect.width - 16);
+                ui.style.left = `${Math.round(rect.left + 8)}px`;
+                ui.style.top = `${Math.round(rect.top + rect.height - 40 - 4)}px`;
+                ui.style.width = `${Math.round(uiWidth)}px`;
+            } else {
+                const uiWidth = Math.max(220, rect.width - 16);
+                ui.style.left = `${Math.round(rect.left + 8)}px`;
+                ui.style.top = `${Math.round(rect.top + rect.height - 44 - 6)}px`;
+                ui.style.width = `${Math.round(uiWidth)}px`;
+            }
         };
 
         updatePositions();
@@ -704,7 +756,7 @@
         subtree: true,
     });
 
-    // 11. 全局快捷键调度系统（统一主流浏览器体验）
+    // 11. 全局快捷键调度系统（统一全主流浏览器体验）
     window.addEventListener('keydown', (e) => {
         // 输入框打字时防误触：绝不拦截任何键盘事件
         const activeElem = document.activeElement;
