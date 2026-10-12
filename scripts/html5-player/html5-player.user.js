@@ -3,10 +3,10 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.42
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/全屏/镜像翻转，严格过滤 Alt/Ctrl 浏览器原生快捷键）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/全屏/镜像翻转，严格过滤 Alt/Ctrl 浏览器原生快捷键）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
-// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (speed toggle, frame stepping, seek, volume, PiP, screenshot, fullscreen, flip), clean borderless controls, and zero-layout-shift non-intrusive design.
+// @version      1.43
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), clean borderless controls, and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
 // @match        file:///*
@@ -712,7 +712,20 @@ body > .__mp_ui.__mp_audio_ui {
             );
         };
 
-        // 11. 画面截图 (Shift + S)
+        // 11. 画面水平镜像状态
+        let isFlipped = false;
+        const toggleFlip = () => {
+            if (isAudio) return;
+            isFlipped = !isFlipped;
+            media.style.transform = isFlipped ? 'scaleX(-1)' : '';
+            const flipSvg = `<svg viewBox="0 0 24 24"><path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zM3 5v14c0 1.1.9 2 2 2h4v-2H5V5h4V3H5c-1.1 0-2 .9-2 2zm16-2v2h2c0-1.1-.9-2-2-2zm-8 20h2V1h-2v22zm8-6h2v-2h-2v2zM15 5h2V3h-2v2zm4 8h2v-2h-2v2z"/></svg>`;
+            showOSD(
+                `<span class="__mp_osd_vol_icon">${flipSvg}</span>`,
+                isFlipped ? `画面镜像 (开启)` : `画面镜像 (关闭)`
+            );
+        };
+
+        // 12. 画面截图下载 (Shift + S)
         const captureFrame = () => {
             if (isAudio || !media.videoWidth || !media.videoHeight) return;
             try {
@@ -720,6 +733,10 @@ body > .__mp_ui.__mp_audio_ui {
                 canvas.width = media.videoWidth;
                 canvas.height = media.videoHeight;
                 const ctx = canvas.getContext('2d');
+                if (isFlipped) {
+                    ctx.translate(canvas.width, 0);
+                    ctx.scale(-1, 1);
+                }
                 ctx.drawImage(media, 0, 0, canvas.width, canvas.height);
                 canvas.toBlob((blob) => {
                     if (!blob) return;
@@ -741,7 +758,52 @@ body > .__mp_ui.__mp_audio_ui {
             }
         };
 
-        // 12. 画中画切换 (Shift + P)
+        // 13. 复制视频当前帧画面到剪贴板 (Ctrl + C)
+        const copyFrame = () => {
+            if (isAudio || !media.videoWidth || !media.videoHeight) return;
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = media.videoWidth;
+                canvas.height = media.videoHeight;
+                const ctx = canvas.getContext('2d');
+                if (isFlipped) {
+                    ctx.translate(canvas.width, 0);
+                    ctx.scale(-1, 1);
+                }
+                ctx.drawImage(media, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob(async (blob) => {
+                    if (!blob) return;
+                    try {
+                        if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+                            const item = new ClipboardItem({ 'image/png': blob });
+                            await navigator.clipboard.write([item]);
+                            const copySvg = `<svg viewBox="0 0 24 24"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 16H5V5h2v3h10V5h2v14z"/></svg>`;
+                            showOSD(
+                                `<span class="__mp_osd_vol_icon">${copySvg}</span>`,
+                                `已复制画面到剪贴板`,
+                                `${media.videoWidth}x${media.videoHeight}`
+                            );
+                        } else {
+                            throw new Error('ClipboardItem not supported');
+                        }
+                    } catch (clipErr) {
+                        console.warn('[质感播放器] 写入剪贴板失败:', clipErr);
+                        showOSD(
+                            `<span class="__mp_osd_vol_icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></span>`,
+                            `剪贴板写入受限`
+                        );
+                    }
+                }, 'image/png');
+            } catch (err) {
+                console.warn('[质感播放器] 复制画面受跨域资源保护限制:', err);
+                showOSD(
+                    `<span class="__mp_osd_vol_icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></span>`,
+                    `视频受跨域保护无法复制`
+                );
+            }
+        };
+
+        // 14. 画中画切换 (Shift + P)
         const togglePiP = () => {
             if (isAudio || !document.pictureInPictureEnabled) return;
             const pipSvg = `<svg viewBox="0 0 24 24"><path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/></svg>`;
@@ -753,19 +815,6 @@ body > .__mp_ui.__mp_audio_ui {
                     showOSD(`<span class="__mp_osd_vol_icon">${pipSvg}</span>`, `开启画中画`);
                 }).catch(() => {});
             }
-        };
-
-        // 13. 画面水平镜像翻转 (Shift + M)
-        let isFlipped = false;
-        const toggleFlip = () => {
-            if (isAudio) return;
-            isFlipped = !isFlipped;
-            media.style.transform = isFlipped ? 'scaleX(-1)' : '';
-            const flipSvg = `<svg viewBox="0 0 24 24"><path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zM3 5v14c0 1.1.9 2 2 2h4v-2H5V5h4V3H5c-1.1 0-2 .9-2 2zm16-2v2h2c0-1.1-.9-2-2-2zm-8 20h2V1h-2v22zm8-6h2v-2h-2v2zM15 5h2V3h-2v2zm4 8h2v-2h-2v2z"/></svg>`;
-            showOSD(
-                `<span class="__mp_osd_vol_icon">${flipSvg}</span>`,
-                isFlipped ? `画面镜像 (开启)` : `画面镜像 (关闭)`
-            );
         };
 
         // 14. 进度条拖拽与时间更新
@@ -869,6 +918,7 @@ body > .__mp_ui.__mp_audio_ui {
             prevFrame,
             nextFrame,
             captureFrame,
+            copyFrame,
             togglePiP,
             toggleFlip,
             cleanup
@@ -951,7 +1001,7 @@ body > .__mp_ui.__mp_audio_ui {
         if (!targetMedia || !attachedMedia.has(targetMedia)) return;
         const controller = attachedMedia.get(targetMedia);
 
-        // 如果按下了 Ctrl 键，仅处理特定绑定的快速跳转与音量，其余（如 Ctrl+C 复制、Ctrl+X 剪切、Ctrl+D 书签、Ctrl+F 搜索、Ctrl+S 保存等）全部严格放行给浏览器
+        // 如果按下了 Ctrl 键，处理特定绑定的快速跳转、音量调节以及 Ctrl+C 复制当前帧画面
         if (e.ctrlKey) {
             switch (e.code) {
                 case 'ArrowLeft':
@@ -969,6 +1019,17 @@ body > .__mp_ui.__mp_audio_ui {
                 case 'ArrowDown':
                     e.preventDefault();
                     controller.changeVolume(-0.20);
+                    break;
+                case 'KeyC':
+                    // 如果用户在页面上选中文本，优先放行让浏览器原生复制文字
+                    const sel = window.getSelection ? window.getSelection().toString() : '';
+                    if (sel && sel.trim().length > 0) {
+                        return;
+                    }
+                    if (controller.copyFrame) {
+                        e.preventDefault();
+                        controller.copyFrame();
+                    }
                     break;
             }
             return;
