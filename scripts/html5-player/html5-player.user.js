@@ -3,10 +3,10 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.43
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
-// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), clean borderless controls, and zero-layout-shift non-intrusive design.
+// @version      1.44
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (mute toggle, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), clean borderless controls, and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
 // @match        file:///*
@@ -577,6 +577,8 @@ body > .__mp_ui.__mp_audio_ui {
 
         // 7. 音量控制与 OSD 反馈
         const muteBtn = ui.querySelector('.__mp_mute');
+        let lastVolume = (media.volume > 0 && !media.muted) ? media.volume : 0.5;
+
         const updateVolumeUI = () => {
             const vol = media.volume;
             const muted = media.muted;
@@ -590,9 +592,7 @@ body > .__mp_ui.__mp_audio_ui {
             }
         };
 
-        const changeVolume = (delta) => {
-            media.volume = clamp(media.volume + delta, 0, 1);
-            if (media.volume > 0) media.muted = false;
+        const showVolumeOSD = () => {
             const volPercent = Math.round(media.volume * 100);
             const isMuted = media.muted || volPercent === 0;
             const volIconSvg = isMuted
@@ -604,10 +604,38 @@ body > .__mp_ui.__mp_audio_ui {
             );
         };
 
+        const changeVolume = (delta) => {
+            if (delta !== 0) {
+                if (media.muted && delta > 0) {
+                    media.muted = false;
+                }
+                media.volume = clamp(media.volume + delta, 0, 1);
+                if (media.volume > 0) {
+                    media.muted = false;
+                    lastVolume = media.volume;
+                }
+            }
+            showVolumeOSD();
+        };
+
+        const toggleMute = () => {
+            if (media.muted) {
+                media.muted = false;
+                if (media.volume === 0) {
+                    media.volume = lastVolume > 0 ? lastVolume : 0.5;
+                }
+            } else {
+                if (media.volume > 0) {
+                    lastVolume = media.volume;
+                }
+                media.muted = true;
+            }
+            showVolumeOSD();
+        };
+
         muteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            media.muted = !media.muted;
-            changeVolume(0);
+            toggleMute();
         });
 
         // 画面与控制栏全域滚轮调节音量
@@ -865,6 +893,7 @@ body > .__mp_ui.__mp_audio_ui {
         media.addEventListener('progress', updateBufferProgress);
 
         const onMetadataLoaded = () => {
+            if (media.volume > 0 && !media.muted) lastVolume = media.volume;
             updateVolumeUI();
             updateBufferProgress();
             updatePositions();
@@ -911,6 +940,7 @@ body > .__mp_ui.__mp_audio_ui {
             media,
             seek,
             changeVolume,
+            toggleMute,
             togglePlay,
             toggleFullscreen,
             setRate,
@@ -1107,8 +1137,7 @@ body > .__mp_ui.__mp_audio_ui {
                 break;
             case 'KeyM':
                 e.preventDefault();
-                controller.media.muted = !controller.media.muted;
-                controller.changeVolume(0);
+                controller.toggleMute();
                 break;
             case 'Enter':
                 e.preventDefault();
