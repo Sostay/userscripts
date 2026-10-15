@@ -3,10 +3,10 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.44
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示，精准保留原始网页布局和音频排版尺寸。
-// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (mute toggle, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), clean borderless controls, and zero-layout-shift non-intrusive design.
+// @version      1.45
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示，针对 ComfyUI 等画布拖拽缩放平移场景实现动态高频零延迟跟随吸附，精准保留原始网页布局和尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示，针对 ComfyUI 等画布拖拽缩放平移场景实现动态高频零延迟跟随吸附，精准保留原始网页布局和尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (mute toggle, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), high-frequency dynamic position tracking for canvas dragging/zooming (e.g. ComfyUI), and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
 // @match        file:///*
@@ -376,6 +376,33 @@ body > .__mp_ui.__mp_audio_ui {
     // 当前鼠标聚焦/最后操作的媒体元素（供全局快捷键调度）
     let activeMedia = null;
 
+    // 全局指针状态与动态追踪集合（专门解决 ComfyUI 画布拖拽/平移/缩放节点时控制栏不同步问题）
+    let isGlobalPointerDown = false;
+    const trackingControllers = new Set();
+    const notifyAllTracking = () => {
+        trackingControllers.forEach(ctrl => {
+            if (ctrl.updatePositions) ctrl.updatePositions();
+            if (ctrl.startTracking) ctrl.startTracking();
+        });
+    };
+
+    window.addEventListener('pointerdown', () => {
+        isGlobalPointerDown = true;
+        notifyAllTracking();
+    }, { passive: true, capture: true });
+
+    window.addEventListener('pointerup', () => {
+        isGlobalPointerDown = false;
+    }, { passive: true, capture: true });
+
+    window.addEventListener('pointercancel', () => {
+        isGlobalPointerDown = false;
+    }, { passive: true, capture: true });
+
+    window.addEventListener('wheel', () => {
+        notifyAllTracking();
+    }, { passive: true, capture: true });
+
     // 绑定控制器到媒体元素（视频采用 fixed 浮层，音频采用 DOM 原位替换，彻底杜绝表格错位）
     function attachUIToMedia(media) {
         if (!media || media.dataset.__mp_attached) return;
@@ -396,7 +423,8 @@ body > .__mp_ui.__mp_audio_ui {
                 <span class="__mp_osd_badge ${isFast ? '__fast' : ''}">${badgeText}</span>
                 ${timeText ? `<span class="__mp_osd_time">${timeText}</span>` : ''}
             `;
-            updateOSDPosition();
+            updatePositions();
+            startTracking();
             osd.classList.add('__show');
             osdTimeout = setTimeout(() => {
                 osd.classList.remove('__show');
@@ -437,6 +465,8 @@ body > .__mp_ui.__mp_audio_ui {
             osd.style.top = `${Math.round(clamp(rect.top + (isAudio ? -42 : 14), 10, window.innerHeight - 50))}px`;
         };
 
+        let lastRect = { left: 0, top: 0, width: 0, height: 0 };
+
         const updatePositions = () => {
             if (!media.isConnected) return;
             updateOSDPosition();
@@ -445,9 +475,23 @@ body > .__mp_ui.__mp_audio_ui {
             if (isAudio) return;
 
             const isFull = media.classList.contains('__mp_fullscreen_media');
-            const rect = isFull ? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight, bottom: window.innerHeight } : media.getBoundingClientRect();
+            const rect = isFull ? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight, bottom: window.innerHeight, right: window.innerWidth } : media.getBoundingClientRect();
 
-            if (!isFull && (rect.width <= 10 || rect.height <= 10 || rect.bottom < 0 || rect.top > window.innerHeight)) {
+            lastRect.left = rect.left;
+            lastRect.top = rect.top;
+            lastRect.width = rect.width;
+            lastRect.height = rect.height;
+
+            const isOutOfBounds = !isFull && (
+                rect.width <= 10 ||
+                rect.height <= 10 ||
+                rect.bottom <= 0 ||
+                rect.top >= window.innerHeight ||
+                rect.right <= 0 ||
+                rect.left >= window.innerWidth
+            );
+
+            if (isOutOfBounds) {
                 ui.style.display = 'none';
                 osd.style.display = 'none';
                 return;
@@ -460,6 +504,43 @@ body > .__mp_ui.__mp_audio_ui {
             ui.style.left = `${Math.round(rect.left + 8)}px`;
             ui.style.top = `${Math.round(rect.top + rect.height - 40 - 4)}px`;
             ui.style.width = `${Math.round(uiWidth)}px`;
+        };
+
+        // 核心动态位置追踪引擎 (针对 ComfyUI 等画布平移/缩放/拖拽节点的零延迟帧同步)
+        let trackingRafId = null;
+        const checkPositionChange = () => {
+            if (!media.isConnected) {
+                trackingRafId = null;
+                return;
+            }
+            if (!isAudio) {
+                const rect = media.getBoundingClientRect();
+                if (
+                    Math.abs(rect.left - lastRect.left) > 0.5 ||
+                    Math.abs(rect.top - lastRect.top) > 0.5 ||
+                    Math.abs(rect.width - lastRect.width) > 0.5 ||
+                    Math.abs(rect.height - lastRect.height) > 0.5
+                ) {
+                    updatePositions();
+                }
+            }
+
+            const isPlaying = !media.paused && !media.ended;
+            const isUIShown = ui.classList.contains('__show');
+            const isOSDShown = osd.classList.contains('__show');
+
+            if (isPlaying || isUIShown || isOSDShown || isGlobalPointerDown) {
+                trackingRafId = requestAnimationFrame(checkPositionChange);
+            } else {
+                trackingRafId = null;
+            }
+        };
+
+        const startTracking = () => {
+            if (isAudio) return;
+            if (!trackingRafId) {
+                trackingRafId = requestAnimationFrame(checkPositionChange);
+            }
         };
 
         updatePositions();
@@ -477,6 +558,8 @@ body > .__mp_ui.__mp_audio_ui {
         let hideTimeout = null;
         const showUI = () => {
             if (isAudio) return; // 音频始终可见
+            updatePositions();
+            startTracking();
             clearTimeout(hideTimeout);
             ui.classList.add('__show');
         };
@@ -876,6 +959,18 @@ body > .__mp_ui.__mp_audio_ui {
                 progress.style.setProperty('--play-percent', `${progress.value}%`);
                 timeDisplay.textContent = `${formatTime(media.currentTime)} / ${formatTime(media.duration)}`;
             }
+            // 视频播放期间持续比对位置，确保动态移动中零延迟帧对齐
+            if (!isAudio) {
+                const rect = media.getBoundingClientRect();
+                if (
+                    Math.abs(rect.left - lastRect.left) > 0.5 ||
+                    Math.abs(rect.top - lastRect.top) > 0.5 ||
+                    Math.abs(rect.width - lastRect.width) > 0.5 ||
+                    Math.abs(rect.height - lastRect.height) > 0.5
+                ) {
+                    updatePositions();
+                }
+            }
             rafId = requestAnimationFrame(tickProgress);
         };
 
@@ -909,6 +1004,7 @@ body > .__mp_ui.__mp_audio_ui {
         // 15. 全局生命周期与资源清理
         const cleanup = () => {
             if (rafId) cancelAnimationFrame(rafId);
+            if (trackingRafId) cancelAnimationFrame(trackingRafId);
             if (resizeObserver) resizeObserver.disconnect();
             window.removeEventListener('scroll', updatePositions, true);
             window.removeEventListener('resize', updatePositions);
@@ -919,6 +1015,7 @@ body > .__mp_ui.__mp_audio_ui {
             delete media.dataset.__mp_attached;
             delete media.dataset.__mp_had_controls;
             if (attachedMedia.has(media)) attachedMedia.delete(media);
+            trackingControllers.delete(mediaController);
             if (activeMedia === media) activeMedia = null;
         };
 
@@ -935,7 +1032,7 @@ body > .__mp_ui.__mp_audio_ui {
         updatePlayIcon();
         updateVolumeUI();
 
-        // 将控制器暴露给调度器
+        // 将控制器暴露给调度器并加入动态追踪集合
         const mediaController = {
             media,
             seek,
@@ -951,8 +1048,11 @@ body > .__mp_ui.__mp_audio_ui {
             copyFrame,
             togglePiP,
             toggleFlip,
+            updatePositions,
+            startTracking,
             cleanup
         };
+        trackingControllers.add(mediaController);
         return mediaController;
     }
 
