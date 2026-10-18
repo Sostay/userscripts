@@ -3,10 +3,10 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.45
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示，针对 ComfyUI 等画布拖拽缩放平移场景实现动态高频零延迟跟随吸附，精准保留原始网页布局和尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示，针对 ComfyUI 等画布拖拽缩放平移场景实现动态高频零延迟跟随吸附，精准保留原始网页布局和尺寸。
-// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (mute toggle, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), high-frequency dynamic position tracking for canvas dragging/zooming (e.g. ComfyUI), and zero-layout-shift non-intrusive design.
+// @version      1.46
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；彻底解决 ComfyUI 画布切换工作流/拖拽缩放平移以及悬浮播放器窗口关闭后控制栏残留或脱轨的问题，精准保留原始网页布局和尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；彻底解决 ComfyUI 画布切换工作流/拖拽缩放平移以及悬浮播放器窗口关闭后控制栏残留或脱轨的问题，精准保留原始网页布局和尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (mute toggle, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), bulletproof lifecycle tracking and zombie UI cleanup for canvas dragging/workflow switching (e.g. ComfyUI) and floating modals, and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
 // @match        file:///*
@@ -379,33 +379,45 @@ body > .__mp_ui.__mp_audio_ui {
     // 全局指针状态与动态追踪集合（专门解决 ComfyUI 画布拖拽/平移/缩放节点时控制栏不同步问题）
     let isGlobalPointerDown = false;
     const trackingControllers = new Set();
-    const notifyAllTracking = () => {
+    const notifyAllTracking = (duration = 1500) => {
         trackingControllers.forEach(ctrl => {
+            if (!ctrl.media || !ctrl.media.isConnected) {
+                ctrl.cleanup();
+                return;
+            }
             if (ctrl.updatePositions) ctrl.updatePositions();
-            if (ctrl.startTracking) ctrl.startTracking();
+            if (ctrl.startTracking) ctrl.startTracking(duration);
         });
     };
 
     window.addEventListener('pointerdown', () => {
         isGlobalPointerDown = true;
-        notifyAllTracking();
+        notifyAllTracking(2000);
+    }, { passive: true, capture: true });
+
+    window.addEventListener('pointermove', () => {
+        if (isGlobalPointerDown) {
+            notifyAllTracking(1000);
+        }
     }, { passive: true, capture: true });
 
     window.addEventListener('pointerup', () => {
         isGlobalPointerDown = false;
+        notifyAllTracking(1500);
     }, { passive: true, capture: true });
 
     window.addEventListener('pointercancel', () => {
         isGlobalPointerDown = false;
+        notifyAllTracking(1000);
     }, { passive: true, capture: true });
 
     window.addEventListener('wheel', () => {
-        notifyAllTracking();
+        notifyAllTracking(1500);
     }, { passive: true, capture: true });
 
     // 绑定控制器到媒体元素（视频采用 fixed 浮层，音频采用 DOM 原位替换，彻底杜绝表格错位）
     function attachUIToMedia(media) {
-        if (!media || media.dataset.__mp_attached) return;
+        if (!media || attachedMedia.has(media)) return;
         media.dataset.__mp_attached = '1';
 
         const isAudio = media.tagName === 'AUDIO';
@@ -468,11 +480,22 @@ body > .__mp_ui.__mp_audio_ui {
         let lastRect = { left: 0, top: 0, width: 0, height: 0 };
 
         const updatePositions = () => {
-            if (!media.isConnected) return;
+            if (!media.isConnected) {
+                cleanup();
+                return;
+            }
             updateOSDPosition();
 
             // 音频已经在文档流中自适应，不需要也绝不应计算 fixed 坐标
             if (isAudio) return;
+
+            // 检查元素自身是否在 CSS 层面被隐藏（解决浮窗关闭 display:none 导致控制栏残留的问题）
+            const computedStyle = window.getComputedStyle(media);
+            if (computedStyle.display === 'none' || computedStyle.visibility === 'hidden') {
+                ui.style.display = 'none';
+                osd.style.display = 'none';
+                return;
+            }
 
             const isFull = media.classList.contains('__mp_fullscreen_media');
             const rect = isFull ? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight, bottom: window.innerHeight, right: window.innerWidth } : media.getBoundingClientRect();
@@ -508,9 +531,11 @@ body > .__mp_ui.__mp_audio_ui {
 
         // 核心动态位置追踪引擎 (针对 ComfyUI 等画布平移/缩放/拖拽节点的零延迟帧同步)
         let trackingRafId = null;
+        let keepTrackingUntil = 0;
+
         const checkPositionChange = () => {
             if (!media.isConnected) {
-                trackingRafId = null;
+                cleanup();
                 return;
             }
             if (!isAudio) {
@@ -528,22 +553,41 @@ body > .__mp_ui.__mp_audio_ui {
             const isPlaying = !media.paused && !media.ended;
             const isUIShown = ui.classList.contains('__show');
             const isOSDShown = osd.classList.contains('__show');
+            const shouldKeepTracking = Date.now() < keepTrackingUntil || isGlobalPointerDown;
 
-            if (isPlaying || isUIShown || isOSDShown || isGlobalPointerDown) {
+            if (isPlaying || isUIShown || isOSDShown || shouldKeepTracking) {
                 trackingRafId = requestAnimationFrame(checkPositionChange);
             } else {
                 trackingRafId = null;
             }
         };
 
-        const startTracking = () => {
+        const startTracking = (duration = 1500) => {
             if (isAudio) return;
+            keepTrackingUntil = Math.max(keepTrackingUntil, Date.now() + duration);
             if (!trackingRafId) {
                 trackingRafId = requestAnimationFrame(checkPositionChange);
             }
         };
 
         updatePositions();
+
+        // 原生交叉观察器：当元素被关闭/移出视口/设置 display:none 时立即隐藏控制栏
+        const intersectionObserver = new IntersectionObserver((entries) => {
+            const entry = entries[0];
+            if (!media.isConnected) {
+                cleanup();
+                return;
+            }
+            if (!entry.isIntersecting) {
+                ui.style.display = 'none';
+                osd.style.display = 'none';
+            } else {
+                updatePositions();
+                startTracking(1000);
+            }
+        });
+        intersectionObserver.observe(media);
 
         const resizeObserver = new ResizeObserver(updatePositions);
         resizeObserver.observe(media);
@@ -554,30 +598,66 @@ body > .__mp_ui.__mp_audio_ui {
 
         media.controls = false;
 
-        // 4. 控制栏显隐交互
+        // 4. 控制栏显隐交互 (支持悬浮保持、离开自动淡出，暂停后绝不永久占屏)
         let hideTimeout = null;
+        let isHovered = false;
+
         const showUI = () => {
             if (isAudio) return; // 音频始终可见
+            isHovered = true;
             updatePositions();
-            startTracking();
+            startTracking(1500);
             clearTimeout(hideTimeout);
             ui.classList.add('__show');
         };
-        const hideUI = () => {
+
+        const scheduleHide = (delay = 2000) => {
             if (isAudio) return;
             clearTimeout(hideTimeout);
-            if (!media.paused && !media.ended) {
-                hideTimeout = setTimeout(() => ui.classList.remove('__show'), 2000);
-            }
+            hideTimeout = setTimeout(() => {
+                if (!isHovered || (!media.paused && !media.ended)) {
+                    ui.classList.remove('__show');
+                }
+            }, delay);
+        };
+
+        const onLeave = () => {
+            isHovered = false;
+            scheduleHide(800);
         };
 
         media.addEventListener('mouseenter', () => { activeMedia = media; showUI(); });
-        media.addEventListener('mousemove', () => { activeMedia = media; showUI(); hideUI(); });
-        media.addEventListener('mouseleave', () => { hideUI(); });
+        media.addEventListener('mousemove', () => {
+            activeMedia = media;
+            showUI();
+            if (!media.paused && !media.ended) {
+                scheduleHide(2000);
+            }
+        });
+        media.addEventListener('mouseleave', (e) => {
+            if (e.relatedTarget && (ui === e.relatedTarget || ui.contains(e.relatedTarget))) {
+                return;
+            }
+            onLeave();
+        });
+
         ui.addEventListener('mouseenter', () => { activeMedia = media; showUI(); });
-        ui.addEventListener('mouseleave', () => { hideUI(); });
-        media.addEventListener('play', () => { showUI(); hideUI(); });
-        media.addEventListener('pause', () => { showUI(); });
+        ui.addEventListener('mousemove', () => {
+            activeMedia = media;
+            showUI();
+            if (!media.paused && !media.ended) {
+                scheduleHide(2000);
+            }
+        });
+        ui.addEventListener('mouseleave', (e) => {
+            if (e.relatedTarget && (media === e.relatedTarget || media.contains(e.relatedTarget))) {
+                return;
+            }
+            onLeave();
+        });
+
+        media.addEventListener('play', () => { showUI(); scheduleHide(2000); });
+        media.addEventListener('pause', () => { showUI(); scheduleHide(2500); });
 
         // 5. 播放 / 暂停
         const playBtn = ui.querySelector('.__mp_play');
@@ -1006,6 +1086,7 @@ body > .__mp_ui.__mp_audio_ui {
             if (rafId) cancelAnimationFrame(rafId);
             if (trackingRafId) cancelAnimationFrame(trackingRafId);
             if (resizeObserver) resizeObserver.disconnect();
+            if (intersectionObserver) intersectionObserver.disconnect();
             window.removeEventListener('scroll', updatePositions, true);
             window.removeEventListener('resize', updatePositions);
             if (ui.parentElement) ui.remove();
@@ -1014,7 +1095,7 @@ body > .__mp_ui.__mp_audio_ui {
             media.classList.remove('__mp_fullscreen_media');
             delete media.dataset.__mp_attached;
             delete media.dataset.__mp_had_controls;
-            if (attachedMedia.has(media)) attachedMedia.delete(media);
+            attachedMedia.delete(media);
             trackingControllers.delete(mediaController);
             if (activeMedia === media) activeMedia = null;
         };
@@ -1065,13 +1146,18 @@ body > .__mp_ui.__mp_audio_ui {
 
         if (hasControls || isStandalone) {
             media.dataset.__mp_had_controls = '1';
-            if (!attachedMedia.has(media)) {
-                try {
-                    const controller = attachUIToMedia(media);
-                    if (controller) attachedMedia.set(media, controller);
-                } catch (e) {
-                    console.error('[质感播放器] 挂载异常:', e);
+            if (attachedMedia.has(media)) {
+                const existingCtrl = attachedMedia.get(media);
+                if (existingCtrl && existingCtrl.media === media && media.isConnected) {
+                    existingCtrl.updatePositions();
+                    return;
                 }
+            }
+            try {
+                const controller = attachUIToMedia(media);
+                if (controller) attachedMedia.set(media, controller);
+            } catch (e) {
+                console.error('[质感播放器] 挂载异常:', e);
             }
         }
     }
@@ -1083,8 +1169,16 @@ body > .__mp_ui.__mp_audio_ui {
     // 初次扫描
     scanAndProcess();
 
-    // 监听动态插入的媒体元素
+    // 监听动态插入与移除的媒体元素（彻底根除 ComfyUI 切换工作流与关闭浮窗时的遗留残留）
     const globalObserver = new MutationObserver((mutations) => {
+        // 1. 任何 DOM 变动时，首先检查是否有已失联的播放器并立刻彻底清理
+        trackingControllers.forEach(ctrl => {
+            if (!ctrl.media || !ctrl.media.isConnected) {
+                ctrl.cleanup();
+            }
+        });
+
+        // 2. 检查新插入的节点
         mutations.forEach(mutation => {
             if (mutation.addedNodes) {
                 mutation.addedNodes.forEach(node => {
@@ -1102,6 +1196,17 @@ body > .__mp_ui.__mp_audio_ui {
         childList: true,
         subtree: true,
     });
+
+    // 周期性看门狗：针对未触发 DOM Mutation 的隐藏情况（如 CSS 切换 display:none，或切标签页）进行复核与隐藏
+    setInterval(() => {
+        trackingControllers.forEach(ctrl => {
+            if (!ctrl.media || !ctrl.media.isConnected) {
+                ctrl.cleanup();
+            } else {
+                ctrl.updatePositions();
+            }
+        });
+    }, 500);
 
     // 16. 全局全能快捷键调度系统（统一全主流浏览器体验，严格规避系统与浏览器快捷键冲突）
     window.addEventListener('keydown', (e) => {
