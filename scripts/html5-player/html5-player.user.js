@@ -3,10 +3,10 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.46
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；彻底解决 ComfyUI 画布切换工作流/拖拽缩放平移以及悬浮播放器窗口关闭后控制栏残留或脱轨的问题，精准保留原始网页布局和尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；彻底解决 ComfyUI 画布切换工作流/拖拽缩放平移以及悬浮播放器窗口关闭后控制栏残留或脱轨的问题，精准保留原始网页布局和尺寸。
-// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (mute toggle, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), bulletproof lifecycle tracking and zombie UI cleanup for canvas dragging/workflow switching (e.g. ComfyUI) and floating modals, and zero-layout-shift non-intrusive design.
+// @version      1.47
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；彻底解决悬浮弹窗播放器关闭后控制栏残留不消失、ComfyUI 画布切换工作流/拖拽缩放平移以及隐藏视频控制栏脱轨的问题，精准保留原始网页布局和尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；彻底解决悬浮弹窗播放器关闭后控制栏残留不消失、ComfyUI 画布切换工作流/拖拽缩放平移以及隐藏视频控制栏脱轨的问题，精准保留原始网页布局和尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (mute toggle, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), bulletproof lifecycle tracking and zombie UI cleanup for canvas dragging/workflow switching (e.g. ComfyUI) and floating modals (e.g. fancybox), and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
 // @match        file:///*
@@ -166,8 +166,7 @@
     position: fixed;
     height: 40px;
     box-sizing: border-box;
-    display: flex !important;
-    visibility: visible !important;
+    display: flex;
     align-items: center;
     gap: 8px;
     pointer-events: auto;
@@ -186,8 +185,19 @@
 }
 
 .__mp_ui.__mp_video_ui.__show {
-    opacity: 1 !important;
+    opacity: 1;
     transform: translateY(0);
+}
+
+/* 强制隐藏类：解决样式继承与 !important 优先级导致的控制条残留问题 */
+.__mp_ui.__mp_hidden,
+.__mp_ui[style*="display: none"],
+.__mp_osd.__mp_hidden,
+.__mp_osd[style*="display: none"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 
 /* 视频控制栏按钮：毛玻璃小圆底与投影，复杂画面下清晰可读 */
@@ -479,6 +489,22 @@ body > .__mp_ui.__mp_audio_ui {
 
         let lastRect = { left: 0, top: 0, width: 0, height: 0 };
 
+        const hideUIElements = () => {
+            ui.classList.remove('__show');
+            ui.classList.add('__mp_hidden');
+            ui.style.setProperty('display', 'none', 'important');
+            osd.classList.remove('__show');
+            osd.classList.add('__mp_hidden');
+            osd.style.setProperty('display', 'none', 'important');
+        };
+
+        const showUIElements = () => {
+            ui.classList.remove('__mp_hidden');
+            ui.style.removeProperty('display');
+            osd.classList.remove('__mp_hidden');
+            osd.style.removeProperty('display');
+        };
+
         const updatePositions = () => {
             if (!media.isConnected) {
                 cleanup();
@@ -492,8 +518,7 @@ body > .__mp_ui.__mp_audio_ui {
             // 检查元素自身是否在 CSS 层面被隐藏（解决浮窗关闭 display:none 导致控制栏残留的问题）
             const computedStyle = window.getComputedStyle(media);
             if (computedStyle.display === 'none' || computedStyle.visibility === 'hidden') {
-                ui.style.display = 'none';
-                osd.style.display = 'none';
+                hideUIElements();
                 return;
             }
 
@@ -515,12 +540,10 @@ body > .__mp_ui.__mp_audio_ui {
             );
 
             if (isOutOfBounds) {
-                ui.style.display = 'none';
-                osd.style.display = 'none';
+                hideUIElements();
                 return;
             } else {
-                ui.style.display = 'flex';
-                osd.style.display = 'flex';
+                showUIElements();
             }
 
             const uiWidth = Math.max(180, rect.width - 16);
@@ -580,8 +603,7 @@ body > .__mp_ui.__mp_audio_ui {
                 return;
             }
             if (!entry.isIntersecting) {
-                ui.style.display = 'none';
-                osd.style.display = 'none';
+                hideUIElements();
             } else {
                 updatePositions();
                 startTracking(1000);
@@ -604,10 +626,10 @@ body > .__mp_ui.__mp_audio_ui {
 
         const showUI = () => {
             if (isAudio) return; // 音频始终可见
-            isHovered = true;
             updatePositions();
             startTracking(1500);
             clearTimeout(hideTimeout);
+            showUIElements();
             ui.classList.add('__show');
         };
 
@@ -623,12 +645,17 @@ body > .__mp_ui.__mp_audio_ui {
 
         const onLeave = () => {
             isHovered = false;
-            scheduleHide(800);
+            scheduleHide(600);
         };
 
-        media.addEventListener('mouseenter', () => { activeMedia = media; showUI(); });
+        media.addEventListener('mouseenter', () => {
+            activeMedia = media;
+            isHovered = true;
+            showUI();
+        });
         media.addEventListener('mousemove', () => {
             activeMedia = media;
+            isHovered = true;
             showUI();
             if (!media.paused && !media.ended) {
                 scheduleHide(2000);
@@ -641,9 +668,14 @@ body > .__mp_ui.__mp_audio_ui {
             onLeave();
         });
 
-        ui.addEventListener('mouseenter', () => { activeMedia = media; showUI(); });
+        ui.addEventListener('mouseenter', () => {
+            activeMedia = media;
+            isHovered = true;
+            showUI();
+        });
         ui.addEventListener('mousemove', () => {
             activeMedia = media;
+            isHovered = true;
             showUI();
             if (!media.paused && !media.ended) {
                 scheduleHide(2000);
@@ -656,8 +688,20 @@ body > .__mp_ui.__mp_audio_ui {
             onLeave();
         });
 
-        media.addEventListener('play', () => { showUI(); scheduleHide(2000); });
-        media.addEventListener('pause', () => { showUI(); scheduleHide(2500); });
+        media.addEventListener('play', () => {
+            showUI();
+            scheduleHide(2000);
+        });
+        media.addEventListener('pause', () => {
+            updatePlayIcon();
+            if (isHovered) {
+                showUI();
+            } else {
+                updatePositions();
+                ui.classList.add('__show');
+                scheduleHide(1500);
+            }
+        });
 
         // 5. 播放 / 暂停
         const playBtn = ui.querySelector('.__mp_play');
