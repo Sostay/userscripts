@@ -3,10 +3,10 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.54
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能精准识别第三方自定义播放器及 iframe 嵌套播放页（如 Streamtape、Plyr 等）彻底避免控制栏重叠，弹窗预览与原生视频完美呈现，精准保留原始网页布局和尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能精准识别第三方自定义播放器及 iframe 嵌套播放页（如 Streamtape、Plyr 等）彻底避免控制栏重叠，弹窗预览与原生视频完美呈现，精准保留原始网页布局和尺寸。
-// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (S-key rotation, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), global shortcuts enhancement on all web videos, smart custom player & iframe embed detection without UI clutter, and zero-layout-shift non-intrusive design.
+// @version      1.55
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能精准识别第三方自定义播放器（如 Jellyfin, Emby, Plex, Plyr, Streamtape 等）彻底避免控制栏重叠，原生视频完美呈现，精准保留原始网页布局和尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能精准识别第三方自定义播放器（如 Jellyfin, Emby, Plex, Plyr, Streamtape 等）彻底避免控制栏重叠，原生视频完美呈现，精准保留原始网页布局和尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (S-key rotation, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), global shortcuts enhancement on all web videos, smart custom player (Jellyfin, Emby, Plex, Plyr, etc.) & iframe embed detection without UI clutter, and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
 // @match        file:///*
@@ -425,17 +425,17 @@ body > .__mp_ui.__mp_audio_ui {
         notifyAllTracking(1500);
     }, { passive: true, capture: true });
 
-    // 精准识别媒体是否已被第三方自定义播放器接管（如 Streamtape、Plyr、Video.js、DPlayer 等，防止控制栏重叠）
+    // 精准识别媒体是否已被第三方自定义播放器接管（如 Jellyfin、Emby、Plex、Streamtape、Plyr、Video.js、DPlayer 等，防止控制栏重叠）
     function hasThirdPartyPlayer(media) {
         if (!media || !media.isConnected) return false;
         if (isStandalonePage) return false;
 
-        // 核心规则：任何处于子 iframe 内部的嵌入式页面（如 Streamtape, Supremejav, Doodstream 等多层嵌套播放页），均属于第三方独立播放器组件，绝对不渲染自制控制条，杜绝双层重叠！
+        // 核心规则 1：任何处于子 iframe 内部的嵌入式页面（如 Streamtape, Supremejav, Doodstream 等多层嵌套播放页），均属于第三方独立播放器组件，绝对不渲染自制控制条，杜绝双层重叠！
         if (window !== window.top) {
             return true;
         }
 
-        // 1. 媒体自身特征识别
+        // 核心规则 2：媒体自身特征直接识别
         if (
             media.hasAttribute('data-plyr-config') ||
             media.hasAttribute('data-plyr-embed') ||
@@ -446,22 +446,45 @@ body > .__mp_ui.__mp_audio_ui {
             return true;
         }
 
-        // 2. 检查媒体祖先元素（向上查 8 层，严格匹配已知第三方播放器框架，绝不误伤普通 modal/fancybox 弹窗）
+        // 核心规则 3：检查全页面特征（精准命中 Jellyfin、Emby、Plex 等全屏影视 Web 客户端）
+        if (document.body) {
+            const bodyCls = typeof document.body.className === 'string' ? document.body.className : '';
+            if (
+                bodyCls.includes('libraryDocument') ||
+                bodyCls.includes('videoDocument') ||
+                document.querySelector('.videoPlayerContainer, .htmlvideoplayer, .itemVideoPlayer, .videoOsd, .osdBottom')
+            ) {
+                return true;
+            }
+        }
+
+        // 核心规则 4：检查媒体祖先元素（向上查 8 层，严格匹配已知第三方播放器框架及容器）
         let cur = media.parentElement;
         let depth = 0;
         while (cur && depth < 8 && cur !== document.body && cur !== document.documentElement) {
-            // 命中已知播放器框架容器
+            const cls = typeof cur.className === 'string' ? cur.className : '';
+            const id = typeof cur.id === 'string' ? cur.id : '';
+
+            // 命中已知第三方播放器框架容器（增加 Jellyfin, Emby, Plex, Shaka 等）
             if (
                 cur.matches && cur.matches(
-                    '.plyr, [data-plyr-provider], .video-js, [data-vjs-player], .dplayer, .artplayer-app, .art-video-player, .bpx-player, .bilibili-player, .xgplayer, .jwplayer, .tcplayer, .prism-player, .ckplayer, .flowplayer, #movie_player, .html5-video-player, .txp_video_container, .fluid-player'
+                    '.videoPlayerContainer, .htmlvideoplayer, .itemVideoPlayer, .videoOsd, .plyr, [data-plyr-provider], .video-js, [data-vjs-player], .dplayer, .artplayer-app, .art-video-player, .bpx-player, .bilibili-player, .xgplayer, .jwplayer, .tcplayer, .prism-player, .ckplayer, .flowplayer, #movie_player, .html5-video-player, .txp_video_container, .fluid-player, .shaka-video-container'
                 )
+            ) {
+                return true;
+            }
+
+            // 正则匹配类名与 ID
+            if (
+                /(\b|_|-)(videoplayer|videoplayercontainer|htmlvideoplayer|itemvideoplayer|videoosd|plyr|dplayer|artplayer|xgplayer|jwplayer|videojs|video-js|bpx-player|bilibili-player|fluid-player|fp-player|tcplayer|prism-player|flowplayer)(\b|_|-)/i.test(cls) ||
+                /(\b|_|-)(movie_player|player_container|player-wrapper|videoplayer)(\b|_|-)/i.test(id)
             ) {
                 return true;
             }
 
             // 检查容器内是否已经存在非本脚本的专用第三方控制条结构
             const customControls = cur.querySelector(
-                '.plyr__controls, .vjs-control-bar, .dplayer-controller, .art-controls, .bpx-player-control-bottom, .bilibili-player-video-control, .xgplayer-controls, .jw-controls, .fp-controls, .prism-controlbar'
+                '.videoOsd, .osdBottom, .osdControls, .plyr__controls, .vjs-control-bar, .dplayer-controller, .art-controls, .bpx-player-control-bottom, .bilibili-player-video-control, .xgplayer-controls, .jw-controls, .fp-controls, .prism-controlbar, [class*="control-bar"], [class*="controls-bar"], [class*="player-control"], [class*="video-control"]'
             );
             if (customControls && !customControls.classList.contains('__mp_ui')) {
                 return true;
@@ -469,6 +492,18 @@ body > .__mp_ui.__mp_audio_ui {
 
             cur = cur.parentElement;
             depth++;
+        }
+
+        // 核心规则 5：智能控件探测
+        // 如果当前视频本身没有原生 controls 属性，且父容器内已经存在多个交互按钮或滑块（如 Jellyfin 等自定义播放条），说明已被网页自带 UI 接管，绝不强加自制控制条
+        if (!media.hasAttribute('controls') && media.dataset.__mp_had_controls !== '1') {
+            const container = media.parentElement;
+            if (container && container !== document.body) {
+                const siblingControls = container.querySelectorAll('button, input[type="range"], [role="button"], [class*="btn"], [class*="slider"]');
+                if (siblingControls.length >= 2) {
+                    return true;
+                }
+            }
         }
 
         return false;
