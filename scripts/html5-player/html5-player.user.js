@@ -3,10 +3,10 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.51
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能识别自定义播放器与 iframe 嵌入播放器（如 Plyr 等）避免控制栏重叠，精准保留原始网页布局和尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能识别自定义播放器与 iframe 嵌入播放器（如 Plyr 等）避免控制栏重叠，精准保留原始网页布局和尺寸。
-// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (S-key rotation, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), global shortcuts enhancement on all web videos, smart custom player & iframe embed detection without UI clutter, and zero-layout-shift non-intrusive design.
+// @version      1.53
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能精准识别第三方自定义播放器（如 Plyr 等）彻底避免控制栏重叠，弹窗预览与原生视频完美呈现，精准保留原始网页布局和尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能精准识别第三方自定义播放器（如 Plyr 等）彻底避免控制栏重叠，弹窗预览与原生视频完美呈现，精准保留原始网页布局和尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (S-key rotation, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), global shortcuts enhancement on all web videos, smart and accurate custom player (Plyr, etc.) detection without UI clutter, and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
 // @match        file:///*
@@ -425,24 +425,12 @@ body > .__mp_ui.__mp_audio_ui {
         notifyAllTracking(1500);
     }, { passive: true, capture: true });
 
-    // 判断是否处于第三方嵌入式视频播放器 iframe 中（Embed Player Widget，如各种流媒体嵌入页）
-    function isEmbedPlayerIframe() {
-        if (window === window.top) return false;
-        if (isStandalonePage) return false;
-        return true;
-    }
-
-    // 智能识别媒体元素是否已被网页自带的自定义播放器接管（如 Plyr, Video.js, DPlayer, B站, YouTube 等）
-    function isCustomPlayer(media) {
+    // 精准识别媒体是否已被第三方自定义播放器接管（如 Plyr、Video.js、DPlayer 等，防止控制栏重叠）
+    function hasThirdPartyPlayer(media) {
         if (!media || !media.isConnected) return false;
         if (isStandalonePage) return false;
 
-        // 核心规则：任何处于子 iframe 中的网页（非单媒体直链），均视为第三方专有嵌入式播放器组件
-        if (isEmbedPlayerIframe()) {
-            return true;
-        }
-
-        // 1. 媒体自身特征直接识别
+        // 1. 媒体自身特征识别
         if (
             media.hasAttribute('data-plyr-config') ||
             media.hasAttribute('data-plyr-embed') ||
@@ -453,49 +441,29 @@ body > .__mp_ui.__mp_audio_ui {
             return true;
         }
 
-        // 2. 检查媒体祖先元素（向上遍历至 body/documentElement）
+        // 2. 检查媒体祖先元素（向上查 8 层，严格匹配已知第三方播放器框架，绝不误伤普通 modal/fancybox 弹窗）
         let cur = media.parentElement;
         let depth = 0;
         while (cur && depth < 8 && cur !== document.body && cur !== document.documentElement) {
-            const cls = typeof cur.className === 'string' ? cur.className : '';
-            const id = typeof cur.id === 'string' ? cur.id : '';
-
-            // 知名第三方播放器容器匹配
+            // 命中已知播放器框架容器
             if (
                 cur.matches && cur.matches(
-                    '.plyr, [data-plyr-provider], .video-js, [data-vjs-player], .dplayer, .artplayer-app, .art-video-player, .bpx-player, .bilibili-player, .xgplayer, .jwplayer, .tcplayer, .prism-player, .ckplayer, .flowplayer, #movie_player, .html5-video-player, .txp_video_container, [data-player-type]'
+                    '.plyr, [data-plyr-provider], .video-js, [data-vjs-player], .dplayer, .artplayer-app, .art-video-player, .bpx-player, .bilibili-player, .xgplayer, .jwplayer, .tcplayer, .prism-player, .ckplayer, .flowplayer, #movie_player, .html5-video-player, .txp_video_container, .fluid-player'
                 )
             ) {
                 return true;
             }
 
-            // 类名与 ID 正则匹配
-            if (
-                /(\b|_|-)(plyr|dplayer|artplayer|xgplayer|jwplayer|videojs|bpx-player|bilibili-player)(\b|_|-)/i.test(cls) ||
-                /(\b|_|-)(movie_player|player_container)(\b|_|-)/i.test(id)
-            ) {
-                return true;
-            }
-
-            // 检查该容器内部是否含有第三方控制条组件（排除本脚本自身的 __mp_ui / __mp_osd）
-            const extControls = cur.querySelector(
-                '.plyr__controls, .vjs-control-bar, .dplayer-controller, .art-controls, .bpx-player-control-bottom, .bilibili-player-video-control, .xgplayer-controls, .jw-controls, [class*="control-bar"], [class*="controls-bar"], [class*="player-control"], [class*="video-control"]'
+            // 检查容器内是否已经存在非本脚本的专用第三方控制条结构
+            const customControls = cur.querySelector(
+                '.plyr__controls, .vjs-control-bar, .dplayer-controller, .art-controls, .bpx-player-control-bottom, .bilibili-player-video-control, .xgplayer-controls, .jw-controls, .fp-controls, .prism-controlbar'
             );
-            if (extControls && !extControls.classList.contains('__mp_ui')) {
+            if (customControls && !customControls.classList.contains('__mp_ui')) {
                 return true;
             }
 
             cur = cur.parentElement;
             depth++;
-        }
-
-        // 3. 初始没有原生 controls 属性且处于带交互控件的复杂结构中
-        if (!media.hasAttribute('controls') && media.dataset.__mp_had_controls !== '1') {
-            const parent = media.parentElement;
-            if (parent && parent !== document.body) {
-                const hasBtns = parent.querySelector('button, [role="button"], [class*="control"], [class*="btn"]');
-                if (hasBtns) return true;
-            }
         }
 
         return false;
@@ -520,7 +488,7 @@ body > .__mp_ui.__mp_audio_ui {
         };
 
         const showUIBar = () => {
-            if (isCustomPlayer(media)) {
+            if (hasThirdPartyPlayer(media)) {
                 hideUIBar();
                 return;
             }
@@ -572,12 +540,12 @@ body > .__mp_ui.__mp_audio_ui {
         `;
 
         // 核心挂载策略：
-        // 视频：原生播放器才挂载在 body，使用 fixed 贴合在视频画面底部（自定义播放器绝不挂载 UI，彻底避免重叠）
+        // 视频：原生播放器才挂载在 body，使用 fixed 贴合在视频画面底部（第三方播放器绝不挂载 UI，彻底避免重叠）
         // 音频：直接作为兄弟节点插入在 audio 原位置，原 audio 隐藏，完美占据表格/段落中的原位槽位！
         if (isAudio) {
             media.style.display = 'none';
             media.after(ui);
-        } else if (!isCustomPlayer(media)) {
+        } else if (!hasThirdPartyPlayer(media)) {
             document.body.appendChild(ui);
         }
 
@@ -635,8 +603,8 @@ body > .__mp_ui.__mp_audio_ui {
                 showOSDContainer();
             }
 
-            // 核心特性：如果检测到媒体已被网站自定义播放器接管（如 Plyr、iframe 嵌入播放器等），彻底移除/隐形控制栏 UI，绝不发生重叠！
-            if (isCustomPlayer(media)) {
+            // 核心特性：若检测到第三方播放器（如 Plyr 等），彻底从 DOM 拔除并隐藏控制栏 UI，绝不发生重叠！
+            if (hasThirdPartyPlayer(media)) {
                 if (ui && ui.parentElement) {
                     ui.remove();
                 } else {
@@ -730,8 +698,9 @@ body > .__mp_ui.__mp_audio_ui {
 
         const showUI = () => {
             if (isAudio) return; // 音频始终可见
-            if (isCustomPlayer(media)) {
+            if (hasThirdPartyPlayer(media)) {
                 hideUIBar();
+                if (ui && ui.parentElement) ui.remove();
                 return;
             }
             isHovered = true;
@@ -743,7 +712,7 @@ body > .__mp_ui.__mp_audio_ui {
         };
 
         const scheduleHide = (delay = 2000) => {
-            if (isAudio || isCustomPlayer(media)) return;
+            if (isAudio || hasThirdPartyPlayer(media)) return;
             clearTimeout(hideTimeout);
             hideTimeout = setTimeout(() => {
                 if (!isHovered || (!media.paused && !media.ended)) {
@@ -760,14 +729,14 @@ body > .__mp_ui.__mp_audio_ui {
         media.addEventListener('mouseenter', () => {
             activeMedia = media;
             isHovered = true;
-            if (!isCustomPlayer(media)) {
+            if (!hasThirdPartyPlayer(media)) {
                 showUI();
             }
         });
         media.addEventListener('mousemove', () => {
             activeMedia = media;
             isHovered = true;
-            if (!isCustomPlayer(media)) {
+            if (!hasThirdPartyPlayer(media)) {
                 showUI();
                 if (!media.paused && !media.ended) {
                     scheduleHide(2000);
@@ -803,14 +772,14 @@ body > .__mp_ui.__mp_audio_ui {
 
         media.addEventListener('play', () => {
             activeMedia = media;
-            if (!isCustomPlayer(media)) {
+            if (!hasThirdPartyPlayer(media)) {
                 showUI();
                 scheduleHide(2000);
             }
         });
         media.addEventListener('pause', () => {
             updatePlayIcon();
-            if (!isCustomPlayer(media)) {
+            if (!hasThirdPartyPlayer(media)) {
                 if (isHovered) {
                     showUI();
                 } else {
@@ -849,10 +818,10 @@ body > .__mp_ui.__mp_audio_ui {
             togglePlay();
         });
 
-        // 画面单击暂停与双击全屏（仅在原生播放器上生效，自定义播放器交由网页自身逻辑处理）
+        // 画面单击暂停与双击全屏（仅在原生播放器上生效，第三方播放器交由网页自身逻辑处理）
         let clickTimer = null;
         media.addEventListener('click', (e) => {
-            if (isCustomPlayer(media)) return;
+            if (hasThirdPartyPlayer(media)) return;
             if (ui && ui.contains(e.target)) return;
             if (clickTimer) {
                 clearTimeout(clickTimer);
@@ -866,10 +835,10 @@ body > .__mp_ui.__mp_audio_ui {
             }
         });
 
-        // 6. 全屏切换（原生播放器真全屏；自定义播放器智能全屏外层容器）
+        // 6. 全屏切换（原生播放器真全屏；第三方播放器智能全屏外层容器）
         const toggleFullscreen = () => {
             if (isAudio) return;
-            if (isCustomPlayer(media)) {
+            if (hasThirdPartyPlayer(media)) {
                 const playerContainer = media.closest('.plyr, .video-js, .dplayer, .bpx-player, .xgplayer, [class*="player"]') || media;
                 if (!document.fullscreenElement) {
                     if (playerContainer.requestFullscreen) {
