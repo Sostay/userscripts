@@ -3,10 +3,10 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.55
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能精准识别第三方自定义播放器（如 Jellyfin, Emby, Plex, Plyr, Streamtape 等）彻底避免控制栏重叠，原生视频完美呈现，精准保留原始网页布局和尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能精准识别第三方自定义播放器（如 Jellyfin, Emby, Plex, Plyr, Streamtape 等）彻底避免控制栏重叠，原生视频完美呈现，精准保留原始网页布局和尺寸。
-// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (S-key rotation, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), global shortcuts enhancement on all web videos, smart custom player (Jellyfin, Emby, Plex, Plyr, etc.) & iframe embed detection without UI clutter, and zero-layout-shift non-intrusive design.
+// @version      1.60
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持悬浮网页全屏、丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能精准识别第三方自定义播放器（如 Jellyfin, Emby, Plex, Plyr, Streamtape 等）彻底避免控制栏重叠，原生视频完美呈现，精准保留原始网页布局和尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持悬浮网页全屏、丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能精准识别第三方自定义播放器（如 Jellyfin, Emby, Plex, Plyr, Streamtape 等）彻底避免控制栏重叠，原生视频完美呈现，精准保留原始网页布局和尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, web fullscreen popup, rich shortcuts (S-key rotation, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), global shortcuts enhancement on all web videos, smart custom player (Jellyfin, Emby, Plex, Plyr, etc.) & iframe embed detection without UI clutter, and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
 // @match        file:///*
@@ -67,7 +67,8 @@
     // 3. 播放器核心 UI 与左上角高质感 OSD 样式
     const css = `
 /* 全屏媒体增强：无损铺满视口，不移动 DOM 节点，零风险断流，退出后 100% 原位恢复 */
-.__mp_fullscreen_media {
+.__mp_fullscreen_media,
+.__mp_web_fullscreen_media {
     position: fixed !important;
     top: 0 !important;
     left: 0 !important;
@@ -79,6 +80,79 @@
     object-fit: contain !important;
     background-color: #000 !important;
     margin: 0 !important;
+}
+
+/* 网页全屏时锁定页面滚动，防止背后页面滑动 */
+html.__mp_web_fullscreen_lock,
+body.__mp_web_fullscreen_lock {
+    overflow: hidden !important;
+}
+
+/* 全屏与网页全屏悬浮按钮包装器 */
+.__mp_fullscreen_wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 鼠标悬停全屏按钮时上方浮出的网页全屏操作按钮容器（带 8px 隐形触桥防止悬浮中断） */
+.__mp_web_fullscreen_popup {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    padding-bottom: 8px;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(4px);
+    transition: opacity 160ms ease, transform 160ms ease, visibility 160ms;
+    z-index: 2147483647;
+    white-space: nowrap;
+}
+
+.__mp_fullscreen_wrap:hover .__mp_web_fullscreen_popup,
+.__mp_web_fullscreen_popup:hover {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transform: translateY(0);
+}
+
+/* 网页全屏高质感半透明胶囊按钮 */
+.__mp_web_fullscreen_btn {
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.6) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 120ms ease, transform 120ms ease, border-color 120ms ease;
+}
+
+.__mp_web_fullscreen_btn:hover {
+    background: rgba(0, 0, 0, 0.8) !important;
+    border-color: rgba(255, 255, 255, 0.45) !important;
+    transform: scale(1.05);
+}
+
+.__mp_web_fullscreen_btn svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+    flex-shrink: 0;
 }
 
 /* 左上角高质感 OSD 提示层（完全根据参考图还原） */
@@ -509,6 +583,32 @@ body > .__mp_ui.__mp_audio_ui {
         return false;
     }
 
+    // 判断媒体元素是否应该展示控制栏：必须满足原生参数指定了 controls（或独立直链页面），且未被第三方自定义播放器接管
+    function isControlsWanted(media) {
+        if (!media || !media.isConnected) return false;
+        if (isStandalonePage) return true;
+
+        // 检查媒体是否被指定显示原生控件：
+        // 1. 具有 controls 属性
+        // 2. controls 属性为 true
+        // 3. 记忆属性 __mp_has_controls === '1' (针对 Firefox 等兼容)
+        const hasControls = (
+            (media.hasAttribute('controls') || media.controls === true || media.dataset.__mp_has_controls === '1') &&
+            media.dataset.__mp_has_controls !== '0'
+        );
+
+        if (!hasControls) {
+            return false;
+        }
+
+        // 严密排除任何第三方自定义播放器（如 Jellyfin, Emby, Plyr 等，避免双层控制栏）
+        if (hasThirdPartyPlayer(media)) {
+            return false;
+        }
+
+        return true;
+    }
+
     // 绑定控制器到媒体元素（视频采用 fixed 浮层，音频采用 DOM 原位替换，彻底杜绝表格错位）
     function attachUIToMedia(media) {
         if (!media || attachedMedia.has(media)) return;
@@ -528,7 +628,7 @@ body > .__mp_ui.__mp_audio_ui {
         };
 
         const showUIBar = () => {
-            if (hasThirdPartyPlayer(media)) {
+            if (!isControlsWanted(media)) {
                 hideUIBar();
                 return;
             }
@@ -575,17 +675,28 @@ body > .__mp_ui.__mp_audio_ui {
             <div class="__mp_time">00:00 / 00:00</div>
             <div class="__mp_right_controls">
                 <div class="__mp_btn __mp_mute" title="静音 (M) / 滚轮调节音量"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg></div>
-                ${!isAudio ? `<div class="__mp_btn __mp_fullscreen" title="全屏 (Enter / 双击)"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></div>` : ''}
+                ${!isAudio ? `
+                <div class="__mp_fullscreen_wrap">
+                    <div class="__mp_web_fullscreen_popup">
+                        <div class="__mp_web_fullscreen_btn" title="网页全屏 (Shift + Enter)">
+                            <svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H5V7h14v11zM7 9h4v2H9v2H7V9zm10 4h-4v-2h2v-2h2v4z"/></svg>
+                            <span class="__mp_web_fullscreen_text">网页全屏</span>
+                        </div>
+                    </div>
+                    <div class="__mp_btn __mp_fullscreen" title="全屏 (Enter / 双击)"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></div>
+                </div>` : ''}
             </div>
         `;
 
         // 核心挂载策略：
-        // 视频：原生播放器才挂载在 body，使用 fixed 贴合在视频画面底部（第三方播放器绝不挂载 UI，彻底避免重叠）
-        // 音频：直接作为兄弟节点插入在 audio 原位置，原 audio 隐藏，完美占据表格/段落中的原位槽位！
+        // 视频：只有满足 controls 参数且非第三方播放器时才挂载到 body
+        // 音频：只有原生开启了 controls 的音频才作为兄弟节点插入原位置替换原生黑条，其余保持原样
         if (isAudio) {
-            media.style.display = 'none';
-            media.after(ui);
-        } else if (!hasThirdPartyPlayer(media)) {
+            if (isControlsWanted(media)) {
+                media.style.display = 'none';
+                media.after(ui);
+            }
+        } else if (isControlsWanted(media)) {
             document.body.appendChild(ui);
         }
 
@@ -618,7 +729,7 @@ body > .__mp_ui.__mp_audio_ui {
                 return;
             }
 
-            const isFull = media.classList.contains('__mp_fullscreen_media');
+            const isFull = media.classList.contains('__mp_fullscreen_media') || media.classList.contains('__mp_web_fullscreen_media');
             const rect = isFull ? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight, bottom: window.innerHeight, right: window.innerWidth } : media.getBoundingClientRect();
 
             lastRect.left = rect.left;
@@ -643,8 +754,8 @@ body > .__mp_ui.__mp_audio_ui {
                 showOSDContainer();
             }
 
-            // 核心特性：若检测到第三方播放器（如 Plyr 等），彻底从 DOM 拔除并隐藏控制栏 UI，绝不发生重叠！
-            if (hasThirdPartyPlayer(media)) {
+            // 核心特性：精确检查原生视频控制条状态，若视频参数指定不显示控件，或被第三方播放器接管，彻底隐藏/拔除控制栏 UI！
+            if (!isControlsWanted(media)) {
                 if (ui && ui.parentElement) {
                     ui.remove();
                 } else {
@@ -652,8 +763,13 @@ body > .__mp_ui.__mp_audio_ui {
                 }
                 return;
             } else {
-                if (!ui.parentElement && document.body) {
-                    document.body.appendChild(ui);
+                if (!ui.parentElement) {
+                    if (isAudio) {
+                        media.style.display = 'none';
+                        media.after(ui);
+                    } else if (document.body) {
+                        document.body.appendChild(ui);
+                    }
                 }
                 showUIBar();
             }
@@ -730,15 +846,38 @@ body > .__mp_ui.__mp_audio_ui {
         window.addEventListener('scroll', updatePositions, { passive: true, capture: true });
         window.addEventListener('resize', updatePositions, { passive: true });
 
-        media.controls = false;
+        // 记录视频原始意图：如果在 Firefox 下且原本开启了 controls，设置 dataset 并清除原生 controls
+        const isFirefox = navigator.userAgent.includes('Firefox');
+        if (media.hasAttribute('controls') || media.controls === true) {
+            media.dataset.__mp_has_controls = '1';
+        }
+        if (isFirefox && media.dataset.__mp_has_controls === '1') {
+            media.controls = false;
+        }
 
-        // 4. 控制栏显隐交互 (支持悬浮保持、离开自动淡出，暂停后绝不永久占屏；自定义播放器绝不弹出控制栏)
+        // 监听外部对 controls 属性的动态修改（如用户在右键菜单中点击“显示所有控件”或“隐藏所有控件”）
+        const controlsObserver = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+                if (m.attributeName === 'controls') {
+                    if (media.hasAttribute('controls') || media.controls === true) {
+                        media.dataset.__mp_has_controls = '1';
+                        if (isFirefox) media.controls = false;
+                    } else {
+                        media.dataset.__mp_has_controls = '0';
+                    }
+                    updatePositions();
+                }
+            }
+        });
+        controlsObserver.observe(media, { attributes: true, attributeFilter: ['controls'] });
+
+        // 4. 控制栏显隐交互 (支持悬浮保持、离开自动淡出，暂停后绝不永久占屏；非 controls 媒体与第三方播放器绝不弹出控制栏)
         let hideTimeout = null;
         let isHovered = false;
 
         const showUI = () => {
             if (isAudio) return; // 音频始终可见
-            if (hasThirdPartyPlayer(media)) {
+            if (!isControlsWanted(media)) {
                 hideUIBar();
                 if (ui && ui.parentElement) ui.remove();
                 return;
@@ -752,7 +891,7 @@ body > .__mp_ui.__mp_audio_ui {
         };
 
         const scheduleHide = (delay = 2000) => {
-            if (isAudio || hasThirdPartyPlayer(media)) return;
+            if (isAudio || !isControlsWanted(media)) return;
             clearTimeout(hideTimeout);
             hideTimeout = setTimeout(() => {
                 if (!isHovered || (!media.paused && !media.ended)) {
@@ -769,14 +908,14 @@ body > .__mp_ui.__mp_audio_ui {
         media.addEventListener('mouseenter', () => {
             activeMedia = media;
             isHovered = true;
-            if (!hasThirdPartyPlayer(media)) {
+            if (isControlsWanted(media)) {
                 showUI();
             }
         });
         media.addEventListener('mousemove', () => {
             activeMedia = media;
             isHovered = true;
-            if (!hasThirdPartyPlayer(media)) {
+            if (isControlsWanted(media)) {
                 showUI();
                 if (!media.paused && !media.ended) {
                     scheduleHide(2000);
@@ -812,14 +951,14 @@ body > .__mp_ui.__mp_audio_ui {
 
         media.addEventListener('play', () => {
             activeMedia = media;
-            if (!hasThirdPartyPlayer(media)) {
+            if (isControlsWanted(media)) {
                 showUI();
                 scheduleHide(2000);
             }
         });
         media.addEventListener('pause', () => {
             updatePlayIcon();
-            if (!hasThirdPartyPlayer(media)) {
+            if (isControlsWanted(media)) {
                 if (isHovered) {
                     showUI();
                 } else {
@@ -858,11 +997,12 @@ body > .__mp_ui.__mp_audio_ui {
             togglePlay();
         });
 
-        // 画面单击暂停与双击全屏（仅在原生播放器上生效，第三方播放器交由网页自身逻辑处理）
+        // 画面单击暂停与双击全屏（仅在原生且指定开启了 controls 的播放器上生效，不干扰其他元素）
         let clickTimer = null;
         media.addEventListener('click', (e) => {
             if (hasThirdPartyPlayer(media)) return;
             if (ui && ui.contains(e.target)) return;
+            if (!isControlsWanted(media)) return;
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
@@ -875,7 +1015,75 @@ body > .__mp_ui.__mp_audio_ui {
             }
         });
 
-        // 6. 全屏切换（原生播放器真全屏；第三方播放器智能全屏外层容器）
+        // 6. 全屏与网页全屏切换
+        const updateWebFullBtnUI = (isWebFull) => {
+            const btn = ui.querySelector('.__mp_web_fullscreen_btn');
+            if (!btn) return;
+            const textSpan = btn.querySelector('.__mp_web_fullscreen_text');
+            const svgPath = btn.querySelector('svg path');
+            if (isWebFull) {
+                if (textSpan) textSpan.textContent = '退出网页全屏';
+                btn.title = '退出网页全屏 (Shift + Enter / Esc)';
+                if (svgPath) svgPath.setAttribute('d', 'M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z');
+            } else {
+                if (textSpan) textSpan.textContent = '网页全屏';
+                btn.title = '网页全屏 (Shift + Enter)';
+                if (svgPath) svgPath.setAttribute('d', 'M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H5V7h14v11zM7 9h4v2H9v2H7V9zm10 4h-4v-2h2v-2h2v4z');
+            }
+        };
+
+        const toggleWebFullscreen = () => {
+            if (isAudio) return;
+
+            // 若当前处于原生全屏，先退出原生全屏
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(() => {});
+            }
+
+            const webFullSvg = `<svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H5V7h14v11zM7 9h4v2H9v2H7V9zm10 4h-4v-2h2v-2h2v4z"/></svg>`;
+
+            // 第三方自定义播放器（如 B站、Plyr 等）的容器级网页全屏兼容
+            if (hasThirdPartyPlayer(media)) {
+                const playerContainer = media.closest('.plyr, .video-js, .dplayer, .bpx-player, .xgplayer, [class*="player"]') || media;
+                const isWebFull = playerContainer.classList.contains('__mp_web_fullscreen_media');
+                if (!isWebFull) {
+                    playerContainer.classList.add('__mp_web_fullscreen_media');
+                    document.documentElement.classList.add('__mp_web_fullscreen_lock');
+                    document.body.classList.add('__mp_web_fullscreen_lock');
+                    showOSD(`<span class="__mp_osd_vol_icon">${webFullSvg}</span>`, `开启网页全屏`);
+                } else {
+                    playerContainer.classList.remove('__mp_web_fullscreen_media');
+                    document.documentElement.classList.remove('__mp_web_fullscreen_lock');
+                    document.body.classList.remove('__mp_web_fullscreen_lock');
+                    showOSD(`<span class="__mp_osd_vol_icon">${webFullSvg}</span>`, `退出网页全屏`);
+                }
+                return;
+            }
+
+            const isWebFull = media.classList.contains('__mp_web_fullscreen_media');
+            if (!isWebFull) {
+                media.classList.remove('__mp_fullscreen_media');
+                media.classList.add('__mp_web_fullscreen_media');
+                document.documentElement.classList.add('__mp_web_fullscreen_lock');
+                document.body.classList.add('__mp_web_fullscreen_lock');
+                updateWebFullBtnUI(true);
+                showOSD(
+                    `<span class="__mp_osd_vol_icon">${webFullSvg}</span>`,
+                    `开启网页全屏`
+                );
+            } else {
+                media.classList.remove('__mp_web_fullscreen_media');
+                document.documentElement.classList.remove('__mp_web_fullscreen_lock');
+                document.body.classList.remove('__mp_web_fullscreen_lock');
+                updateWebFullBtnUI(false);
+                showOSD(
+                    `<span class="__mp_osd_vol_icon">${webFullSvg}</span>`,
+                    `退出网页全屏`
+                );
+            }
+            setTimeout(updatePositions, 50);
+        };
+
         const toggleFullscreen = () => {
             if (isAudio) return;
             if (hasThirdPartyPlayer(media)) {
@@ -891,6 +1099,15 @@ body > .__mp_ui.__mp_audio_ui {
                 }
                 return;
             }
+
+            // 若当前处于网页全屏，切换进入系统原生全屏时先恢复网页全屏状态
+            if (media.classList.contains('__mp_web_fullscreen_media')) {
+                media.classList.remove('__mp_web_fullscreen_media');
+                document.documentElement.classList.remove('__mp_web_fullscreen_lock');
+                document.body.classList.remove('__mp_web_fullscreen_lock');
+                updateWebFullBtnUI(false);
+            }
+
             const isFull = media.classList.contains('__mp_fullscreen_media');
             if (!isFull) {
                 media.classList.add('__mp_fullscreen_media');
@@ -913,6 +1130,14 @@ body > .__mp_ui.__mp_audio_ui {
             fullBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 toggleFullscreen();
+            });
+        }
+
+        const webFullBtn = ui.querySelector('.__mp_web_fullscreen_btn');
+        if (webFullBtn) {
+            webFullBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleWebFullscreen();
             });
         }
 
@@ -1300,12 +1525,20 @@ body > .__mp_ui.__mp_audio_ui {
             if (trackingRafId) cancelAnimationFrame(trackingRafId);
             if (resizeObserver) resizeObserver.disconnect();
             if (intersectionObserver) intersectionObserver.disconnect();
+            if (controlsObserver) controlsObserver.disconnect();
             window.removeEventListener('scroll', updatePositions, true);
             window.removeEventListener('resize', updatePositions);
             if (ui.parentElement) ui.remove();
             if (osd.parentElement) osd.remove();
             if (isAudio) media.style.display = '';
             media.classList.remove('__mp_fullscreen_media');
+            media.classList.remove('__mp_web_fullscreen_media');
+            document.documentElement.classList.remove('__mp_web_fullscreen_lock');
+            document.body.classList.remove('__mp_web_fullscreen_lock');
+            if (media.dataset.__mp_has_controls === '1') {
+                media.controls = true;
+            }
+            delete media.dataset.__mp_has_controls;
             delete media.dataset.__mp_attached;
             delete media.dataset.__mp_had_controls;
             attachedMedia.delete(media);
@@ -1334,6 +1567,8 @@ body > .__mp_ui.__mp_audio_ui {
             toggleMute,
             togglePlay,
             toggleFullscreen,
+            toggleWebFullscreen,
+            isWebFullscreen: () => media.classList.contains('__mp_web_fullscreen_media'),
             setRate,
             toggleRate,
             prevFrame,
@@ -1507,8 +1742,21 @@ body > .__mp_ui.__mp_audio_ui {
                     e.preventDefault();
                     controller.toggleFlip();
                     break;
+                case 'Enter':
+                    e.preventDefault();
+                    controller.toggleWebFullscreen();
+                    break;
             }
             return;
+        }
+
+        // 快捷退出网页全屏：按 Escape 键
+        if (e.code === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+            if (controller.isWebFullscreen && controller.isWebFullscreen()) {
+                e.preventDefault();
+                controller.toggleWebFullscreen();
+                return;
+            }
         }
 
         // 无任何修饰键（纯单键操作）
