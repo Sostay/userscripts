@@ -3,10 +3,10 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.47
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；彻底解决悬浮弹窗播放器关闭后控制栏残留不消失、ComfyUI 画布切换工作流/拖拽缩放平移以及隐藏视频控制栏脱轨的问题，精准保留原始网页布局和尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（静音切换/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；彻底解决悬浮弹窗播放器关闭后控制栏残留不消失、ComfyUI 画布切换工作流/拖拽缩放平移以及隐藏视频控制栏脱轨的问题，精准保留原始网页布局和尺寸。
-// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (mute toggle, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), bulletproof lifecycle tracking and zombie UI cleanup for canvas dragging/workflow switching (e.g. ComfyUI) and floating modals (e.g. fancybox), and zero-layout-shift non-intrusive design.
+// @version      1.50
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能识别自定义播放器（如 Plyr 等）避免控制栏重叠，精准保留原始网页布局和尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能识别自定义播放器（如 Plyr 等）避免控制栏重叠，精准保留原始网页布局和尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (S-key rotation, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), global shortcuts enhancement on all web videos, smart custom player (Plyr, etc.) detection without UI clutter, and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
 // @match        file:///*
@@ -425,6 +425,70 @@ body > .__mp_ui.__mp_audio_ui {
         notifyAllTracking(1500);
     }, { passive: true, capture: true });
 
+    // 智能识别媒体元素是否已被网页自带的自定义播放器接管（如 Plyr, Video.js, DPlayer, B站, YouTube 等）
+    function isCustomPlayer(media) {
+        if (!media || !media.isConnected) return false;
+        if (isStandalonePage) return false;
+
+        // 1. 媒体自身特征直接识别
+        if (
+            media.hasAttribute('data-plyr-config') ||
+            media.hasAttribute('data-plyr-embed') ||
+            media.classList.contains('vjs-tech') ||
+            media.classList.contains('dplayer-video') ||
+            media.classList.contains('art-video')
+        ) {
+            return true;
+        }
+
+        // 2. 检查媒体祖先元素（向上遍历至 body/documentElement）
+        let cur = media.parentElement;
+        let depth = 0;
+        while (cur && depth < 8 && cur !== document.body && cur !== document.documentElement) {
+            const cls = typeof cur.className === 'string' ? cur.className : '';
+            const id = typeof cur.id === 'string' ? cur.id : '';
+
+            // 知名第三方播放器容器匹配
+            if (
+                cur.matches && cur.matches(
+                    '.plyr, [data-plyr-provider], .video-js, [data-vjs-player], .dplayer, .artplayer-app, .art-video-player, .bpx-player, .bilibili-player, .xgplayer, .jwplayer, .tcplayer, .prism-player, .ckplayer, .flowplayer, #movie_player, .html5-video-player, .txp_video_container, [data-player-type]'
+                )
+            ) {
+                return true;
+            }
+
+            // 类名与 ID 正则匹配
+            if (
+                /(\b|_|-)(plyr|dplayer|artplayer|xgplayer|jwplayer|videojs|bpx-player|bilibili-player)(\b|_|-)/i.test(cls) ||
+                /(\b|_|-)(movie_player|player_container)(\b|_|-)/i.test(id)
+            ) {
+                return true;
+            }
+
+            // 检查该容器内部是否含有第三方控制条组件（排除本脚本自身的 __mp_ui / __mp_osd）
+            const extControls = cur.querySelector(
+                '.plyr__controls, .vjs-control-bar, .dplayer-controller, .art-controls, .bpx-player-control-bottom, .bilibili-player-video-control, .xgplayer-controls, .jw-controls, [class*="control-bar"], [class*="controls-bar"], [class*="player-control"], [class*="video-control"]'
+            );
+            if (extControls && !extControls.classList.contains('__mp_ui')) {
+                return true;
+            }
+
+            cur = cur.parentElement;
+            depth++;
+        }
+
+        // 3. 初始没有原生 controls 属性且处于带交互控件的复杂结构中
+        if (!media.hasAttribute('controls') && media.dataset.__mp_had_controls !== '1') {
+            const parent = media.parentElement;
+            if (parent && parent !== document.body) {
+                const hasBtns = parent.querySelector('button, [role="button"], [class*="control"], [class*="btn"]');
+                if (hasBtns) return true;
+            }
+        }
+
+        return false;
+    }
+
     // 绑定控制器到媒体元素（视频采用 fixed 浮层，音频采用 DOM 原位替换，彻底杜绝表格错位）
     function attachUIToMedia(media) {
         if (!media || attachedMedia.has(media)) return;
@@ -437,6 +501,32 @@ body > .__mp_ui.__mp_audio_ui {
         osd.className = '__mp_osd';
         document.body.appendChild(osd);
 
+        const hideUIBar = () => {
+            ui.classList.remove('__show');
+            ui.classList.add('__mp_hidden');
+            ui.style.setProperty('display', 'none', 'important');
+        };
+
+        const showUIBar = () => {
+            if (isCustomPlayer(media)) {
+                hideUIBar();
+                return;
+            }
+            ui.classList.remove('__mp_hidden');
+            ui.style.removeProperty('display');
+        };
+
+        const hideOSD = () => {
+            osd.classList.remove('__show');
+            osd.classList.add('__mp_hidden');
+            osd.style.setProperty('display', 'none', 'important');
+        };
+
+        const showOSDContainer = () => {
+            osd.classList.remove('__mp_hidden');
+            osd.style.removeProperty('display');
+        };
+
         let osdTimeout = null;
         function showOSD(iconHtml, badgeText, timeText = '', isFast = false) {
             clearTimeout(osdTimeout);
@@ -447,6 +537,7 @@ body > .__mp_ui.__mp_audio_ui {
             `;
             updatePositions();
             startTracking();
+            showOSDContainer();
             osd.classList.add('__show');
             osdTimeout = setTimeout(() => {
                 osd.classList.remove('__show');
@@ -469,7 +560,7 @@ body > .__mp_ui.__mp_audio_ui {
         `;
 
         // 核心挂载策略：
-        // 视频：挂载在 body，使用 fixed 贴合在视频画面底部
+        // 视频：挂载在 body，使用 fixed 贴合在视频画面底部（自定义播放器将永久隐藏 UI，避免重叠）
         // 音频：直接作为兄弟节点插入在 audio 原位置，原 audio 隐藏，完美占据表格/段落中的原位槽位！
         if (isAudio) {
             media.style.display = 'none';
@@ -489,22 +580,6 @@ body > .__mp_ui.__mp_audio_ui {
 
         let lastRect = { left: 0, top: 0, width: 0, height: 0 };
 
-        const hideUIElements = () => {
-            ui.classList.remove('__show');
-            ui.classList.add('__mp_hidden');
-            ui.style.setProperty('display', 'none', 'important');
-            osd.classList.remove('__show');
-            osd.classList.add('__mp_hidden');
-            osd.style.setProperty('display', 'none', 'important');
-        };
-
-        const showUIElements = () => {
-            ui.classList.remove('__mp_hidden');
-            ui.style.removeProperty('display');
-            osd.classList.remove('__mp_hidden');
-            osd.style.removeProperty('display');
-        };
-
         const updatePositions = () => {
             if (!media.isConnected) {
                 cleanup();
@@ -518,7 +593,8 @@ body > .__mp_ui.__mp_audio_ui {
             // 检查元素自身是否在 CSS 层面被隐藏（解决浮窗关闭 display:none 导致控制栏残留的问题）
             const computedStyle = window.getComputedStyle(media);
             if (computedStyle.display === 'none' || computedStyle.visibility === 'hidden') {
-                hideUIElements();
+                hideUIBar();
+                hideOSD();
                 return;
             }
 
@@ -540,10 +616,19 @@ body > .__mp_ui.__mp_audio_ui {
             );
 
             if (isOutOfBounds) {
-                hideUIElements();
+                hideUIBar();
+                hideOSD();
                 return;
             } else {
-                showUIElements();
+                showOSDContainer();
+            }
+
+            // 核心特性：如果检测到媒体已被网站自定义播放器接管（如 Plyr 等），彻底隐形控制栏 UI，绝不发生重叠！
+            if (isCustomPlayer(media)) {
+                hideUIBar();
+                return;
+            } else {
+                showUIBar();
             }
 
             const uiWidth = Math.max(180, rect.width - 16);
@@ -620,21 +705,26 @@ body > .__mp_ui.__mp_audio_ui {
 
         media.controls = false;
 
-        // 4. 控制栏显隐交互 (支持悬浮保持、离开自动淡出，暂停后绝不永久占屏)
+        // 4. 控制栏显隐交互 (支持悬浮保持、离开自动淡出，暂停后绝不永久占屏；自定义播放器绝不弹出控制栏)
         let hideTimeout = null;
         let isHovered = false;
 
         const showUI = () => {
             if (isAudio) return; // 音频始终可见
+            if (isCustomPlayer(media)) {
+                hideUIBar();
+                return;
+            }
+            isHovered = true;
             updatePositions();
             startTracking(1500);
             clearTimeout(hideTimeout);
-            showUIElements();
+            showUIBar();
             ui.classList.add('__show');
         };
 
         const scheduleHide = (delay = 2000) => {
-            if (isAudio) return;
+            if (isAudio || isCustomPlayer(media)) return;
             clearTimeout(hideTimeout);
             hideTimeout = setTimeout(() => {
                 if (!isHovered || (!media.paused && !media.ended)) {
@@ -651,14 +741,18 @@ body > .__mp_ui.__mp_audio_ui {
         media.addEventListener('mouseenter', () => {
             activeMedia = media;
             isHovered = true;
-            showUI();
+            if (!isCustomPlayer(media)) {
+                showUI();
+            }
         });
         media.addEventListener('mousemove', () => {
             activeMedia = media;
             isHovered = true;
-            showUI();
-            if (!media.paused && !media.ended) {
-                scheduleHide(2000);
+            if (!isCustomPlayer(media)) {
+                showUI();
+                if (!media.paused && !media.ended) {
+                    scheduleHide(2000);
+                }
             }
         });
         media.addEventListener('mouseleave', (e) => {
@@ -689,17 +783,22 @@ body > .__mp_ui.__mp_audio_ui {
         });
 
         media.addEventListener('play', () => {
-            showUI();
-            scheduleHide(2000);
+            activeMedia = media;
+            if (!isCustomPlayer(media)) {
+                showUI();
+                scheduleHide(2000);
+            }
         });
         media.addEventListener('pause', () => {
             updatePlayIcon();
-            if (isHovered) {
-                showUI();
-            } else {
-                updatePositions();
-                ui.classList.add('__show');
-                scheduleHide(1500);
+            if (!isCustomPlayer(media)) {
+                if (isHovered) {
+                    showUI();
+                } else {
+                    updatePositions();
+                    ui.classList.add('__show');
+                    scheduleHide(1500);
+                }
             }
         });
 
@@ -731,10 +830,11 @@ body > .__mp_ui.__mp_audio_ui {
             togglePlay();
         });
 
-        // 画面单击暂停与双击全屏（防抖解耦）
+        // 画面单击暂停与双击全屏（仅在原生播放器上生效，自定义播放器交由网页自身逻辑处理）
         let clickTimer = null;
         media.addEventListener('click', (e) => {
-            if (ui.contains(e.target)) return;
+            if (isCustomPlayer(media)) return;
+            if (ui && ui.contains(e.target)) return;
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
@@ -747,9 +847,22 @@ body > .__mp_ui.__mp_audio_ui {
             }
         });
 
-        // 6. 全屏切换
+        // 6. 全屏切换（原生播放器真全屏；自定义播放器智能全屏外层容器）
         const toggleFullscreen = () => {
             if (isAudio) return;
+            if (isCustomPlayer(media)) {
+                const playerContainer = media.closest('.plyr, .video-js, .dplayer, .bpx-player, .xgplayer, [class*="player"]') || media;
+                if (!document.fullscreenElement) {
+                    if (playerContainer.requestFullscreen) {
+                        playerContainer.requestFullscreen().catch(() => {});
+                    } else if (media.requestFullscreen) {
+                        media.requestFullscreen().catch(() => {});
+                    }
+                } else {
+                    if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+                }
+                return;
+            }
             const isFull = media.classList.contains('__mp_fullscreen_media');
             if (!isFull) {
                 media.classList.add('__mp_fullscreen_media');
@@ -947,12 +1060,32 @@ body > .__mp_ui.__mp_audio_ui {
             );
         };
 
-        // 11. 画面水平镜像状态
+        // 11. 画面水平镜像与旋转状态
         let isFlipped = false;
+        let rotateAngle = 0;
+
+        const updateTransform = () => {
+            const transforms = [];
+            if (rotateAngle !== 0) transforms.push(`rotate(${rotateAngle}deg)`);
+            if (isFlipped) transforms.push(`scaleX(-1)`);
+            media.style.transform = transforms.join(' ');
+        };
+
+        const toggleRotate = () => {
+            if (isAudio) return;
+            rotateAngle = (rotateAngle + 90) % 360;
+            updateTransform();
+            const rotateSvg = `<svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>`;
+            showOSD(
+                `<span class="__mp_osd_vol_icon">${rotateSvg}</span>`,
+                rotateAngle === 0 ? `画面旋转 0° (恢复)` : `画面旋转 ${rotateAngle}°`
+            );
+        };
+
         const toggleFlip = () => {
             if (isAudio) return;
             isFlipped = !isFlipped;
-            media.style.transform = isFlipped ? 'scaleX(-1)' : '';
+            updateTransform();
             const flipSvg = `<svg viewBox="0 0 24 24"><path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zM3 5v14c0 1.1.9 2 2 2h4v-2H5V5h4V3H5c-1.1 0-2 .9-2 2zm16-2v2h2c0-1.1-.9-2-2-2zm-8 20h2V1h-2v22zm8-6h2v-2h-2v2zM15 5h2V3h-2v2zm4 8h2v-2h-2v2z"/></svg>`;
             showOSD(
                 `<span class="__mp_osd_vol_icon">${flipSvg}</span>`,
@@ -960,19 +1093,33 @@ body > .__mp_ui.__mp_audio_ui {
             );
         };
 
+        // 统一绘制当前视频画面到 Canvas（完美配合旋转与镜像）
+        const drawMediaToCanvas = (canvas, ctx) => {
+            const w = media.videoWidth;
+            const h = media.videoHeight;
+            const isRotated90or270 = rotateAngle === 90 || rotateAngle === 270;
+            canvas.width = isRotated90or270 ? h : w;
+            canvas.height = isRotated90or270 ? w : h;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            if (rotateAngle !== 0) {
+                ctx.rotate((rotateAngle * Math.PI) / 180);
+            }
+            if (isFlipped) {
+                ctx.scale(-1, 1);
+            }
+            ctx.drawImage(media, -w / 2, -h / 2, w, h);
+            ctx.restore();
+        };
+
         // 12. 画面截图下载 (Shift + S)
         const captureFrame = () => {
             if (isAudio || !media.videoWidth || !media.videoHeight) return;
             try {
                 const canvas = document.createElement('canvas');
-                canvas.width = media.videoWidth;
-                canvas.height = media.videoHeight;
                 const ctx = canvas.getContext('2d');
-                if (isFlipped) {
-                    ctx.translate(canvas.width, 0);
-                    ctx.scale(-1, 1);
-                }
-                ctx.drawImage(media, 0, 0, canvas.width, canvas.height);
+                drawMediaToCanvas(canvas, ctx);
                 canvas.toBlob((blob) => {
                     if (!blob) return;
                     const url = URL.createObjectURL(blob);
@@ -985,7 +1132,7 @@ body > .__mp_ui.__mp_audio_ui {
                     showOSD(
                         `<span class="__mp_osd_vol_icon">${camSvg}</span>`,
                         `已截图保存`,
-                        `${media.videoWidth}x${media.videoHeight}`
+                        `${canvas.width}x${canvas.height}`
                     );
                 }, 'image/png');
             } catch (err) {
@@ -998,14 +1145,8 @@ body > .__mp_ui.__mp_audio_ui {
             if (isAudio || !media.videoWidth || !media.videoHeight) return;
             try {
                 const canvas = document.createElement('canvas');
-                canvas.width = media.videoWidth;
-                canvas.height = media.videoHeight;
                 const ctx = canvas.getContext('2d');
-                if (isFlipped) {
-                    ctx.translate(canvas.width, 0);
-                    ctx.scale(-1, 1);
-                }
-                ctx.drawImage(media, 0, 0, canvas.width, canvas.height);
+                drawMediaToCanvas(canvas, ctx);
                 canvas.toBlob(async (blob) => {
                     if (!blob) return;
                     try {
@@ -1016,7 +1157,7 @@ body > .__mp_ui.__mp_audio_ui {
                             showOSD(
                                 `<span class="__mp_osd_vol_icon">${copySvg}</span>`,
                                 `已复制画面到剪贴板`,
-                                `${media.videoWidth}x${media.videoHeight}`
+                                `${canvas.width}x${canvas.height}`
                             );
                         } else {
                             throw new Error('ClipboardItem not supported');
@@ -1169,6 +1310,7 @@ body > .__mp_ui.__mp_audio_ui {
             toggleRate,
             prevFrame,
             nextFrame,
+            toggleRotate,
             captureFrame,
             copyFrame,
             togglePiP,
@@ -1184,25 +1326,19 @@ body > .__mp_ui.__mp_audio_ui {
     const attachedMedia = new WeakMap();
 
     function processMedia(media) {
-        // 核心过滤：接管原生 controls、独立媒体直链、或者本地 file: 播放的音频/视频
-        const hasControls = media.hasAttribute('controls') || media.dataset.__mp_had_controls === '1';
-        const isStandalone = isStandalonePage || (document.body && document.body.childElementCount <= 2 && (media.parentElement === document.body || media.parentElement?.parentElement === document.body));
-
-        if (hasControls || isStandalone) {
-            media.dataset.__mp_had_controls = '1';
-            if (attachedMedia.has(media)) {
-                const existingCtrl = attachedMedia.get(media);
-                if (existingCtrl && existingCtrl.media === media && media.isConnected) {
-                    existingCtrl.updatePositions();
-                    return;
-                }
+        if (!media) return;
+        if (attachedMedia.has(media)) {
+            const existingCtrl = attachedMedia.get(media);
+            if (existingCtrl && existingCtrl.media === media && media.isConnected) {
+                existingCtrl.updatePositions();
+                return;
             }
-            try {
-                const controller = attachUIToMedia(media);
-                if (controller) attachedMedia.set(media, controller);
-            } catch (e) {
-                console.error('[质感播放器] 挂载异常:', e);
-            }
+        }
+        try {
+            const controller = attachUIToMedia(media);
+            if (controller) attachedMedia.set(media, controller);
+        } catch (e) {
+            console.error('[质感播放器] 挂载异常:', e);
         }
     }
 
@@ -1273,8 +1409,14 @@ body > .__mp_ui.__mp_audio_ui {
         // 寻找当前活跃的视频对象
         let targetMedia = activeMedia;
         if (!targetMedia || !targetMedia.isConnected) {
-            const allMedia = Array.from(document.querySelectorAll('video, audio')).filter(m => attachedMedia.has(m));
-            targetMedia = allMedia.find(m => !m.paused && !m.ended) || allMedia[0];
+            const allMedia = Array.from(document.querySelectorAll('video, audio')).filter(m => attachedMedia.has(m) && m.isConnected);
+            const normalMedia = allMedia.filter(m => {
+                if (m.tagName === 'AUDIO') return true;
+                const rect = m.getBoundingClientRect();
+                return rect.width >= 100 && rect.height >= 60;
+            });
+            const candidates = normalMedia.length > 0 ? normalMedia : allMedia;
+            targetMedia = candidates.find(m => !m.paused && !m.ended) || candidates[0];
         }
 
         if (!targetMedia || !attachedMedia.has(targetMedia)) return;
@@ -1375,6 +1517,10 @@ body > .__mp_ui.__mp_audio_ui {
                 e.preventDefault();
                 // 循环切换自定义倍速与正常速度 1.0x
                 controller.toggleRate();
+                break;
+            case 'KeyS':
+                e.preventDefault();
+                controller.toggleRotate();
                 break;
             case 'KeyD':
                 e.preventDefault();
