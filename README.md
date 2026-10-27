@@ -11,7 +11,7 @@
 | 脚本名称 | 当前版本 | Greasy Fork 主页 | 原始代码 (Raw Sync URL) | 说明 |
 | :--- | :---: | :--- | :--- | :--- |
 | **Photopea 完整工作区** | `3.2.7` | [Greasy Fork #599353](https://greasyfork.org/zh-CN/scripts/599353) | [photopea-workspace.user.js](https://raw.githubusercontent.com/Sostay/userscripts/main/scripts/photopea-workspace/photopea-workspace.user.js) | 收回 Photopea 广告预留宽度，彻底解决高内存、卡顿与视口横向漂移问题。（回退恢复至 3.2.2 稳定代码） |
-| **质感 HTML5 播放器** | `1.60` | [Greasy Fork #554122](https://greasyfork.org/zh-CN/scripts/554122) | [html5-player.user.js](https://raw.githubusercontent.com/Sostay/userscripts/main/scripts/html5-player/html5-player.user.js) | 质感 HTML5 播放器，全局支持所有视频页面快捷键增强与 OSD 提示，精准同步原生控件状态（无 controls 自动隐身），支持悬浮网页全屏、智能识别第三方播放器（Jellyfin/Plyr等）避免重叠、S键画面旋转、Ctrl+C 复制当前帧，绝对不改变原页面布局和尺寸 |
+| **质感 HTML5 播放器** | `1.65` | [Greasy Fork #554122](https://greasyfork.org/zh-CN/scripts/554122) | [html5-player.user.js](https://raw.githubusercontent.com/Sostay/userscripts/main/scripts/html5-player/html5-player.user.js) | 质感 HTML5 播放器，全局支持所有视频页面快捷键增强与 OSD 提示，完美破除包含块陷阱的真顶层网页全屏、ComfyUI画布节点专属放行、右键显示控件即时同步、YouTube/B站自定义播放器放行空格暂停 |
 | **飞书网页链接自动跳转** | `1.0` | [Greasy Fork #558411](https://greasyfork.org/zh-CN/scripts/558411) | [feishu-link-redirect.user.js](https://raw.githubusercontent.com/Sostay/userscripts/main/scripts/feishu-link-redirect/feishu-link-redirect.user.js) | 将飞书 applink 链接自动跳转到 oa.feishu.cn 网页版 |
 
 ---

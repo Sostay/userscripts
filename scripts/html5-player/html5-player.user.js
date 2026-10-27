@@ -3,7 +3,7 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.60
+// @version      1.65
 // @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持悬浮网页全屏、丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能精准识别第三方自定义播放器（如 Jellyfin, Emby, Plex, Plyr, Streamtape 等）彻底避免控制栏重叠，原生视频完美呈现，精准保留原始网页布局和尺寸。
 // @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持悬浮网页全屏、丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能精准识别第三方自定义播放器（如 Jellyfin, Emby, Plex, Plyr, Streamtape 等）彻底避免控制栏重叠，原生视频完美呈现，精准保留原始网页布局和尺寸。
 // @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, web fullscreen popup, rich shortcuts (S-key rotation, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), global shortcuts enhancement on all web videos, smart custom player (Jellyfin, Emby, Plex, Plyr, etc.) & iframe embed detection without UI clutter, and zero-layout-shift non-intrusive design.
@@ -80,6 +80,19 @@
     object-fit: contain !important;
     background-color: #000 !important;
     margin: 0 !important;
+}
+
+/* 网页全屏时彻底破除祖先元素的 transform/filter/perspective/contain 局部视口陷阱与层级遮挡 */
+.__mp_web_fullscreen_ancestor {
+    transform: none !important;
+    -webkit-transform: none !important;
+    filter: none !important;
+    -webkit-filter: none !important;
+    perspective: none !important;
+    contain: none !important;
+    will-change: auto !important;
+    overflow: visible !important;
+    z-index: 2147483640 !important;
 }
 
 /* 网页全屏时锁定页面滚动，防止背后页面滑动 */
@@ -499,10 +512,34 @@ body > .__mp_ui.__mp_audio_ui {
         notifyAllTracking(1500);
     }, { passive: true, capture: true });
 
+    // 智能识别 ComfyUI 画布节点环境（针对 ComfyUI 中的视频节点特例放行，必须始终支持质感控制栏）
+    function isComfyUINode(media) {
+        if (!media) return false;
+        if (
+            document.querySelector('#graph-canvas, .litegraph, .comfyui-body') ||
+            window.app?.graph ||
+            window.LiteGraph
+        ) {
+            return true;
+        }
+        if (
+            media.closest?.('.litegraph, #graph-canvas, .comfy-node, .graph-canvas, [data-node-id]') ||
+            media.parentElement?.classList?.contains('comfy-node-widget')
+        ) {
+            return true;
+        }
+        return false;
+    }
+
     // 精准识别媒体是否已被第三方自定义播放器接管（如 Jellyfin、Emby、Plex、Streamtape、Plyr、Video.js、DPlayer 等，防止控制栏重叠）
     function hasThirdPartyPlayer(media) {
         if (!media || !media.isConnected) return false;
         if (isStandalonePage) return false;
+
+        // ComfyUI 画布节点属于工作流预览，绝不属于第三方播放器
+        if (isComfyUINode(media)) {
+            return false;
+        }
 
         // 核心规则 1：任何处于子 iframe 内部的嵌入式页面（如 Streamtape, Supremejav, Doodstream 等多层嵌套播放页），均属于第三方独立播放器组件，绝对不渲染自制控制条，杜绝双层重叠！
         if (window !== window.top) {
@@ -570,7 +607,7 @@ body > .__mp_ui.__mp_audio_ui {
 
         // 核心规则 5：智能控件探测
         // 如果当前视频本身没有原生 controls 属性，且父容器内已经存在多个交互按钮或滑块（如 Jellyfin 等自定义播放条），说明已被网页自带 UI 接管，绝不强加自制控制条
-        if (!media.hasAttribute('controls') && media.dataset.__mp_had_controls !== '1') {
+        if (!isComfyUINode(media) && !media.hasAttribute('controls') && media.dataset.__mp_had_controls !== '1') {
             const container = media.parentElement;
             if (container && container !== document.body) {
                 const siblingControls = container.querySelectorAll('button, input[type="range"], [role="button"], [class*="btn"], [class*="slider"]');
@@ -587,6 +624,11 @@ body > .__mp_ui.__mp_audio_ui {
     function isControlsWanted(media) {
         if (!media || !media.isConnected) return false;
         if (isStandalonePage) return true;
+
+        // 特殊放行：ComfyUI 画布节点中的视频，始终需要提供质感控制栏供用户预览与拖动进度
+        if (isComfyUINode(media)) {
+            return true;
+        }
 
         // 检查媒体是否被指定显示原生控件：
         // 1. 具有 controls 属性
@@ -608,6 +650,34 @@ body > .__mp_ui.__mp_audio_ui {
 
         return true;
     }
+
+    // 劫持 HTMLMediaElement 原生 controls 属性的 setter，实现用户在浏览器右键菜单中点击“显示所有控件 / 隐藏所有控件”时的毫秒级同步响应
+    try {
+        const origControlsDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'controls');
+        if (origControlsDesc && origControlsDesc.set) {
+            Object.defineProperty(HTMLMediaElement.prototype, 'controls', {
+                get() {
+                    return origControlsDesc.get.call(this);
+                },
+                set(val) {
+                    const ret = origControlsDesc.set.call(this, val);
+                    const ctrl = attachedMedia.get(this);
+                    if (ctrl) {
+                        if (val) {
+                            this.dataset.__mp_has_controls = '1';
+                            ctrl.showUI();
+                        } else {
+                            this.dataset.__mp_has_controls = '0';
+                            ctrl.updatePositions();
+                        }
+                    }
+                    return ret;
+                },
+                configurable: true,
+                enumerable: true
+            });
+        }
+    } catch (_) {}
 
     // 绑定控制器到媒体元素（视频采用 fixed 浮层，音频采用 DOM 原位替换，彻底杜绝表格错位）
     function attachUIToMedia(media) {
@@ -1032,56 +1102,101 @@ body > .__mp_ui.__mp_audio_ui {
             }
         };
 
-        const toggleWebFullscreen = () => {
-            if (isAudio) return;
+        let webFullAncestors = [];
+        let webFullPlaceholder = null;
 
-            // 若当前处于原生全屏，先退出原生全屏
+        const enterWebFullscreen = () => {
             if (document.fullscreenElement) {
                 document.exitFullscreen().catch(() => {});
             }
 
+            const targetElement = hasThirdPartyPlayer(media)
+                ? (media.closest('.plyr, .video-js, .dplayer, .bpx-player, .xgplayer, [class*="player"]') || media)
+                : media;
+
+            // 1. 占位符保持原页面文档流稳定，避免父容器高度坍塌
+            try {
+                const rect = targetElement.getBoundingClientRect();
+                webFullPlaceholder = document.createElement('div');
+                webFullPlaceholder.className = '__mp_web_fullscreen_placeholder';
+                webFullPlaceholder.style.cssText = `
+                    display: ${window.getComputedStyle(targetElement).display};
+                    width: ${rect.width}px;
+                    height: ${rect.height}px;
+                    visibility: hidden;
+                    pointer-events: none;
+                `;
+                targetElement.before(webFullPlaceholder);
+            } catch (_) {}
+
+            // 2. 将所有祖先元素的 transform / filter / perspective / contain / overflow 统统重置，破除视口隔离与层级遮挡陷阱
+            webFullAncestors = [];
+            let cur = targetElement.parentElement;
+            while (cur && cur !== document.body && cur !== document.documentElement) {
+                cur.classList.add('__mp_web_fullscreen_ancestor');
+                webFullAncestors.push(cur);
+                cur = cur.parentElement;
+            }
+
+            targetElement.classList.add('__mp_web_fullscreen_media');
+            document.documentElement.classList.add('__mp_web_fullscreen_lock');
+            document.body.classList.add('__mp_web_fullscreen_lock');
+            updateWebFullBtnUI(true);
+
             const webFullSvg = `<svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H5V7h14v11zM7 9h4v2H9v2H7V9zm10 4h-4v-2h2v-2h2v4z"/></svg>`;
-
-            // 第三方自定义播放器（如 B站、Plyr 等）的容器级网页全屏兼容
-            if (hasThirdPartyPlayer(media)) {
-                const playerContainer = media.closest('.plyr, .video-js, .dplayer, .bpx-player, .xgplayer, [class*="player"]') || media;
-                const isWebFull = playerContainer.classList.contains('__mp_web_fullscreen_media');
-                if (!isWebFull) {
-                    playerContainer.classList.add('__mp_web_fullscreen_media');
-                    document.documentElement.classList.add('__mp_web_fullscreen_lock');
-                    document.body.classList.add('__mp_web_fullscreen_lock');
-                    showOSD(`<span class="__mp_osd_vol_icon">${webFullSvg}</span>`, `开启网页全屏`);
-                } else {
-                    playerContainer.classList.remove('__mp_web_fullscreen_media');
-                    document.documentElement.classList.remove('__mp_web_fullscreen_lock');
-                    document.body.classList.remove('__mp_web_fullscreen_lock');
-                    showOSD(`<span class="__mp_osd_vol_icon">${webFullSvg}</span>`, `退出网页全屏`);
-                }
-                return;
-            }
-
-            const isWebFull = media.classList.contains('__mp_web_fullscreen_media');
-            if (!isWebFull) {
-                media.classList.remove('__mp_fullscreen_media');
-                media.classList.add('__mp_web_fullscreen_media');
-                document.documentElement.classList.add('__mp_web_fullscreen_lock');
-                document.body.classList.add('__mp_web_fullscreen_lock');
-                updateWebFullBtnUI(true);
-                showOSD(
-                    `<span class="__mp_osd_vol_icon">${webFullSvg}</span>`,
-                    `开启网页全屏`
-                );
-            } else {
-                media.classList.remove('__mp_web_fullscreen_media');
-                document.documentElement.classList.remove('__mp_web_fullscreen_lock');
-                document.body.classList.remove('__mp_web_fullscreen_lock');
-                updateWebFullBtnUI(false);
-                showOSD(
-                    `<span class="__mp_osd_vol_icon">${webFullSvg}</span>`,
-                    `退出网页全屏`
-                );
-            }
+            showOSD(`<span class="__mp_osd_vol_icon">${webFullSvg}</span>`, `开启网页全屏`);
             setTimeout(updatePositions, 50);
+        };
+
+        const exitWebFullscreen = () => {
+            const targetElement = hasThirdPartyPlayer(media)
+                ? (media.closest('.plyr, .video-js, .dplayer, .bpx-player, .xgplayer, [class*="player"]') || media)
+                : media;
+
+            if (webFullPlaceholder && webFullPlaceholder.parentElement) {
+                webFullPlaceholder.remove();
+                webFullPlaceholder = null;
+            }
+
+            if (webFullAncestors && webFullAncestors.length > 0) {
+                webFullAncestors.forEach(el => el.classList.remove('__mp_web_fullscreen_ancestor'));
+                webFullAncestors = [];
+            }
+
+            targetElement.classList.remove('__mp_web_fullscreen_media');
+            document.documentElement.classList.remove('__mp_web_fullscreen_lock');
+            document.body.classList.remove('__mp_web_fullscreen_lock');
+            updateWebFullBtnUI(false);
+
+            const webFullSvg = `<svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 14H5V7h14v11zM7 9h4v2H9v2H7V9zm10 4h-4v-2h2v-2h2v4z"/></svg>`;
+            showOSD(`<span class="__mp_osd_vol_icon">${webFullSvg}</span>`, `退出网页全屏`);
+            setTimeout(updatePositions, 50);
+        };
+
+        const toggleWebFullscreen = () => {
+            if (isAudio) return;
+
+            // 检查第三方自定义播放器（如 B站、Plyr 等）是否已有网页全屏按钮
+            if (hasThirdPartyPlayer(media)) {
+                const nativeWebFullBtn = document.querySelector(
+                    '.bpx-player-ctrl-web, .bilibili-player-video-web-fullscreen, [data-title="网页全屏"], .video-web-fullscreen-btn, .squirtle-pagefullscreen-inactive, .squirtle-pagefullscreen-active'
+                );
+                if (nativeWebFullBtn) {
+                    nativeWebFullBtn.click();
+                    return;
+                }
+            }
+
+            const targetElement = hasThirdPartyPlayer(media)
+                ? (media.closest('.plyr, .video-js, .dplayer, .bpx-player, .xgplayer, [class*="player"]') || media)
+                : media;
+
+            const isWebFull = targetElement.classList.contains('__mp_web_fullscreen_media');
+            if (!isWebFull) {
+                enterWebFullscreen();
+            } else {
+                exitWebFullscreen();
+            }
         };
 
         const toggleFullscreen = () => {
@@ -1101,11 +1216,8 @@ body > .__mp_ui.__mp_audio_ui {
             }
 
             // 若当前处于网页全屏，切换进入系统原生全屏时先恢复网页全屏状态
-            if (media.classList.contains('__mp_web_fullscreen_media')) {
-                media.classList.remove('__mp_web_fullscreen_media');
-                document.documentElement.classList.remove('__mp_web_fullscreen_lock');
-                document.body.classList.remove('__mp_web_fullscreen_lock');
-                updateWebFullBtnUI(false);
+            if (media.classList.contains('__mp_web_fullscreen_media') || (webFullAncestors && webFullAncestors.length > 0)) {
+                exitWebFullscreen();
             }
 
             const isFull = media.classList.contains('__mp_fullscreen_media');
@@ -1521,6 +1633,9 @@ body > .__mp_ui.__mp_audio_ui {
 
         // 15. 全局生命周期与资源清理
         const cleanup = () => {
+            if (media.classList.contains('__mp_web_fullscreen_media') || (webFullAncestors && webFullAncestors.length > 0)) {
+                exitWebFullscreen();
+            }
             if (rafId) cancelAnimationFrame(rafId);
             if (trackingRafId) cancelAnimationFrame(trackingRafId);
             if (resizeObserver) resizeObserver.disconnect();
@@ -1568,7 +1683,7 @@ body > .__mp_ui.__mp_audio_ui {
             togglePlay,
             toggleFullscreen,
             toggleWebFullscreen,
-            isWebFullscreen: () => media.classList.contains('__mp_web_fullscreen_media'),
+            isWebFullscreen: () => media.classList.contains('__mp_web_fullscreen_media') || (webFullAncestors && webFullAncestors.length > 0),
             setRate,
             toggleRate,
             prevFrame,
@@ -1762,6 +1877,10 @@ body > .__mp_ui.__mp_audio_ui {
         // 无任何修饰键（纯单键操作）
         switch (e.code) {
             case 'Space':
+                // 如果当前处于第三方自定义播放器（如 YouTube、B站、Jellyfin 等），取消空格键拦截，完全放行给网站原生播放器自身处理
+                if (hasThirdPartyPlayer(targetMedia)) {
+                    return;
+                }
                 e.preventDefault();
                 controller.togglePlay();
                 break;
