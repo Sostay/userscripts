@@ -3,10 +3,10 @@
 // @name:zh-CN   质感 HTML5 播放器
 // @name:en      Unified HTML5 Player
 // @namespace    http://tampermonkey.net/
-// @version      1.50
-// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能识别自定义播放器（如 Plyr 等）避免控制栏重叠，精准保留原始网页布局和尺寸。
-// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能识别自定义播放器（如 Plyr 等）避免控制栏重叠，精准保留原始网页布局和尺寸。
-// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (S-key rotation, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), global shortcuts enhancement on all web videos, smart custom player (Plyr, etc.) detection without UI clutter, and zero-layout-shift non-intrusive design.
+// @version      1.51
+// @description  质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能识别自定义播放器与 iframe 嵌入播放器（如 Plyr 等）避免控制栏重叠，精准保留原始网页布局和尺寸。
+// @description:zh-CN 质感 HTML5 网页播放器，统一主流浏览器播放器外观，无背景框通透控制栏，支持丰富快捷键（S键画面旋转/倍速循环切换/逐帧微调/快进快退/音量/画中画/截图/Ctrl+C复制当前帧/全屏/镜像翻转）、左上角高质感 OSD 提示；全局支持所有视频页面快捷键增强，智能识别自定义播放器与 iframe 嵌入播放器（如 Plyr 等）避免控制栏重叠，精准保留原始网页布局和尺寸。
+// @description:en A unified, modern HTML5 media player for all browsers, featuring custom OSD, rich shortcuts (S-key rotation, speed toggle, frame stepping, seek, volume, PiP, screenshot, Ctrl+C copy frame, fullscreen, flip), global shortcuts enhancement on all web videos, smart custom player & iframe embed detection without UI clutter, and zero-layout-shift non-intrusive design.
 // @author       Xion.Ai
 // @match        *://*/*
 // @match        file:///*
@@ -425,10 +425,22 @@ body > .__mp_ui.__mp_audio_ui {
         notifyAllTracking(1500);
     }, { passive: true, capture: true });
 
+    // 判断是否处于第三方嵌入式视频播放器 iframe 中（Embed Player Widget，如各种流媒体嵌入页）
+    function isEmbedPlayerIframe() {
+        if (window === window.top) return false;
+        if (isStandalonePage) return false;
+        return true;
+    }
+
     // 智能识别媒体元素是否已被网页自带的自定义播放器接管（如 Plyr, Video.js, DPlayer, B站, YouTube 等）
     function isCustomPlayer(media) {
         if (!media || !media.isConnected) return false;
         if (isStandalonePage) return false;
+
+        // 核心规则：任何处于子 iframe 中的网页（非单媒体直链），均视为第三方专有嵌入式播放器组件
+        if (isEmbedPlayerIframe()) {
+            return true;
+        }
 
         // 1. 媒体自身特征直接识别
         if (
@@ -560,12 +572,12 @@ body > .__mp_ui.__mp_audio_ui {
         `;
 
         // 核心挂载策略：
-        // 视频：挂载在 body，使用 fixed 贴合在视频画面底部（自定义播放器将永久隐藏 UI，避免重叠）
+        // 视频：原生播放器才挂载在 body，使用 fixed 贴合在视频画面底部（自定义播放器绝不挂载 UI，彻底避免重叠）
         // 音频：直接作为兄弟节点插入在 audio 原位置，原 audio 隐藏，完美占据表格/段落中的原位槽位！
         if (isAudio) {
             media.style.display = 'none';
             media.after(ui);
-        } else {
+        } else if (!isCustomPlayer(media)) {
             document.body.appendChild(ui);
         }
 
@@ -623,11 +635,18 @@ body > .__mp_ui.__mp_audio_ui {
                 showOSDContainer();
             }
 
-            // 核心特性：如果检测到媒体已被网站自定义播放器接管（如 Plyr 等），彻底隐形控制栏 UI，绝不发生重叠！
+            // 核心特性：如果检测到媒体已被网站自定义播放器接管（如 Plyr、iframe 嵌入播放器等），彻底移除/隐形控制栏 UI，绝不发生重叠！
             if (isCustomPlayer(media)) {
-                hideUIBar();
+                if (ui && ui.parentElement) {
+                    ui.remove();
+                } else {
+                    hideUIBar();
+                }
                 return;
             } else {
+                if (!ui.parentElement && document.body) {
+                    document.body.appendChild(ui);
+                }
                 showUIBar();
             }
 
